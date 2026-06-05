@@ -6,6 +6,28 @@ on:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Changelog enforcement
+  # ---------------------------------------------------------------------------
+  changelog:
+    name: Changelog updated
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check CHANGELOG updated
+        if: "!contains(github.event.pull_request.labels.*.name, 'skip-changelog')"
+        run: |
+          git fetch origin main --depth=1
+          if ! git diff --name-only origin/main...HEAD | grep -q "^CHANGELOG.md$"; then
+            echo "Error: CHANGELOG.md was not updated in this PR." >&2
+            echo "Add the 'skip-changelog' label if this PR needs no entry." >&2
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
   # Static analysis
   # ---------------------------------------------------------------------------
   shellcheck:
