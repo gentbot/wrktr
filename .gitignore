@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# bats-core (if installed locally in the repo)
+test_helper/
+tests/libs/
+
+# Shell session artifacts
+*.log
+
+# Homebrew local testing
+.brew/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+OPEN_SOURCE_READINESS.md

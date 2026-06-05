@@ -1,0 +1,511 @@
+.\" wrktr.1 — manual page for the wrktr shell worktree manager
+.\" Install: cp wrktr.1 ~/.local/share/man/man1/ && man -W ~/.local/share/man/man1
+.TH WRKTR 1 "2024" "wrktr 1.0.0" "User Commands"
+.
+.SH NAME
+wrktr \- branch-as-directory git worktree session manager
+.
+.SH SYNOPSIS
+.B source
+.I /path/to/worktree-functions.sh
+.PP
+wrktr is sourced into the current shell, not run as a command.
+After sourcing, the following functions become available:
+.PP
+.nf
+wrktr_clone <url> [destination]
+wrktr_adopt [path]
+wrktr_init
+wrktr_generate [name]
+wrktr_use <name>
+wrktr_add <branch> [base-ref]
+wrktr_checkout <branch>
+wrktr_go [branch]
+wrktr_remove <branch>
+wrktr_rebase
+wrktr_push
+wrktr_status
+wrktr_help [command]
+.fi
+.
+.SH DESCRIPTION
+wrktr treats git branches as persistent directories rather than transient checkout
+states.
+Each branch gets its own directory on disk.
+Switching between branches is
+.BR cd (1),
+not
+.BR "git checkout" .
+.PP
+The underlying structure uses a
+.I bare repository
+\(em a git database with no working tree of its own.
+All branch checkouts are equal linked worktrees pointing back to the same database.
+.PP
+A typical layout:
+.PP
+.nf
+~/projects/myapp/
+    .wrktr/             bare git database
+    main/               linked worktree for main
+    feature%2Flogin/    linked worktree for feature/login
+.fi
+.PP
+Every wrktr function is prefixed
+.B wrktr_
+(public) or
+.B _wrktr_
+(internal).
+Run any command with
+.B \-\-help
+for inline documentation:
+.B wrktr_add\ \-\-help
+.
+.SH REQUIREMENTS
+.TP
+.B bash 3.2 or later
+The macOS system bash (3.2.57) is sufficient. bash 4+ is not required.
+.TP
+.B git 2.7 or later
+.B git worktree list \-\-porcelain
+is required by
+.BR wrktr_status .
+git 2.36 or later is required by
+.BR wrktr_init .
+.TP
+.B rsync
+Required only by
+.BR wrktr_init .
+.
+.SH INSTALLATION
+.nf
+git clone https://github.com/your-username/wrktr.git
+cd wrktr
+./install.sh
+.fi
+.PP
+.B install.sh
+copies
+.I worktree-functions.sh
+to
+.I ~/.local/lib/wrktr/
+and appends a
+.B source
+line to the detected shell profile.
+.PP
+To install manually, add to
+.I ~/.zshrc
+or
+.IR ~/.bash_profile :
+.PP
+.nf
+source /path/to/worktree-functions.sh
+.fi
+.
+.SH PROJECT SETUP
+.
+.SS wrktr_clone
+Clone an existing remote repository into the wrktr structure.
+.PP
+.nf
+wrktr_clone <url> [destination]
+.fi
+.PP
+Creates a bare clone, fixes the fetch refspec, detects the main branch, and creates
+the initial worktree.
+After cloning, run
+.B wrktr_generate
+then
+.BR wrktr_use .
+.
+.SS wrktr_adopt
+Convert an existing normal git clone to the wrktr structure.
+.PP
+.nf
+wrktr_adopt [path]
+.fi
+.PP
+Creates a bare clone from an existing repo.
+The original clone is not modified.
+.
+.SS wrktr_init
+Initialize a bare repository from a new local project with no remote.
+.PP
+.nf
+wrktr_init
+.fi
+.PP
+Interactive.
+Requires the project root and a
+.I main/
+worktree directory to already exist.
+After init, run
+.B wrktr_generate
+then
+.BR wrktr_use .
+.
+.SS wrktr_generate
+Create a session config at
+.IR ~/.config/wrktr/<name>.env .
+.PP
+.nf
+wrktr_generate [name]
+.fi
+.PP
+Prompts for session name, trunk path, remote name, and main branch.
+Configs are plain
+.B KEY=value
+text files.
+.
+.SS wrktr_remote_add
+Add a remote to the bare repository.
+.PP
+.nf
+wrktr_remote_add <name> <url>
+.fi
+.PP
+Sets the correct fetch refspec automatically.
+.
+.SH SESSION MANAGEMENT
+.
+.SS wrktr_use
+Load a session config into the current shell.
+.PP
+.nf
+wrktr_use <name>
+.fi
+.PP
+Parses
+.IR ~/.config/wrktr/<name>.env ,
+exports session variables, and validates.
+On failure, all variables are unset.
+Sessions are shell-scoped.
+.
+.SS wrktr_list
+List all available session configs.
+.PP
+.nf
+wrktr_list
+.fi
+.
+.SS wrktr_current
+Show the loaded session's configuration values.
+.
+.SS wrktr_config_show
+Display the path and raw contents of the loaded session config file.
+.
+.SS wrktr_config_edit
+Open the loaded session config in
+.B $EDITOR
+(falls back to
+.BR vi ).
+Runs
+.B wrktr_validate
+after the editor closes.
+.
+.SS wrktr_status
+Show all active worktrees: branch name, commits ahead/behind, dirty state, path.
+.
+.SS wrktr_validate
+Validate the loaded session. Called automatically before most commands.
+.
+.SH DAILY OPERATIONS
+.
+.SS wrktr_add
+Create a new branch and worktree, then
+.BR cd (1)
+into it.
+.PP
+.nf
+wrktr_add <branch> [base-ref]
+.fi
+.PP
+.I base-ref
+defaults to
+.B origin/<main-branch>
+when a remote is configured,
+or
+.B <main-branch>
+without one.
+.
+.SS wrktr_checkout
+Create a local worktree for a branch that already exists on the remote.
+.PP
+.nf
+wrktr_checkout <branch>
+.fi
+.PP
+Fetches first, verifies the branch exists, creates the worktree with upstream tracking,
+and
+.BR cd (1)
+in.
+.
+.SS wrktr_go
+Navigate to a worktree by branch name.
+.PP
+.nf
+wrktr_go [branch]
+.fi
+.PP
+Handles percent-encoding automatically so
+.B wrktr_go feature/login
+navigates to
+.IR feature%2Flogin/ .
+With no argument, displays
+.B wrktr_status
+and usage.
+.
+.SS wrktr_base
+Navigate to the trunk directory where all worktrees are visible.
+.
+.SS wrktr_update
+Fetch from the configured remote without touching any worktree.
+Called automatically by
+.BR wrktr_add ,
+.BR wrktr_rebase ,
+and
+.BR wrktr_checkout .
+.
+.SS wrktr_rebase
+Fetch and rebase the current branch onto the latest main.
+Must be run from inside a worktree.
+Refuses if the working tree has uncommitted changes.
+.
+.SS wrktr_push
+Push the current branch to the configured remote.
+Refuses to push the main branch.
+Prompts before retrying with
+.B \-\-force\-with\-lease
+if the push is rejected.
+.
+.SS wrktr_remove
+Remove a worktree and optionally delete the branch ref.
+.PP
+.nf
+wrktr_remove <branch>
+.fi
+.PP
+Refuses to remove the main branch.
+Refuses if there are uncommitted changes in the worktree.
+.
+.SH GIT ACCESS
+.
+.SS wrktr_git
+Run any git command against the bare database.
+.PP
+.nf
+wrktr_git <args>
+.fi
+.PP
+Automatically supplies
+.BR \-\-git\-dir .
+Use from outside a worktree; from inside, plain
+.BR git (1)
+works without it.
+.
+.SS wrktr
+Raw passthrough to
+.BR "git worktree" .
+.PP
+.nf
+wrktr list
+wrktr prune
+.fi
+.
+.SH DRY-RUN MODE
+.TP
+.B wrktr_dryrun_enable
+Enable dry-run mode. Mutating commands print what they would do without executing.
+Validation still runs.
+.TP
+.B wrktr_dryrun_disable
+Disable dry-run mode.
+.TP
+.B wrktr_dryrun_status
+Show whether dry-run is active.
+.
+.SH HELP
+.TP
+.B wrktr_help
+List all commands with one-line descriptions.
+.TP
+.B "wrktr_help <command>"
+Show full documentation for a single command.
+Accepts both short names
+.RB ( add )
+and full names
+.RB ( wrktr_add ).
+.PP
+Every command also accepts
+.B \-\-help
+as its first argument:
+.nf
+wrktr_add \-\-help
+.fi
+.
+.SH LIFECYCLE
+.TP
+.B wrktr_unload
+Remove all wrktr functions and
+.B WRKTR_*
+variables from the current shell.
+.TP
+.B wrktr_reload
+Unload and re-source from the original path. Useful after editing
+.IR worktree-functions.sh .
+.TP
+.B wrktr_prompt_info
+Output a context string for embedding in
+.BR PS1 .
+Prints
+.B [name:branch]
+inside a worktree,
+.B [name]
+in a session but outside a worktree, and nothing when no session is loaded.
+.
+.SH ENVIRONMENT
+.TP
+.B WRKTR_VERSION
+Version string. Set at source time.
+.TP
+.B WRKTR_NAME
+Loaded project name. Matches the config filename.
+.TP
+.B WRKTR_BASE_TRUNK
+Absolute path to the trunk directory containing
+.I .wrktr
+and all worktrees.
+.TP
+.B WRKTR_BASE_DIR
+Absolute path to the bare git database.
+Passed as
+.B \-\-git\-dir
+to every git command.
+.TP
+.B WRKTR_REMOTE
+Git remote name. Empty for local-only projects.
+.TP
+.B WRKTR_MAIN_BRANCH
+Primary integration branch name.
+.TP
+.B WRKTR_DRY_RUN
+.B 1
+when dry-run is active;
+.B 0
+otherwise.
+.TP
+.B WRKTR_REPO_DIR_NAME
+Name of the bare git database directory. Default:
+.IR .wrktr .
+Set before sourcing to override. Affects only project creation commands.
+.TP
+.B WRKTR_SOURCE_PATH
+Absolute path to
+.I worktree-functions.sh
+as loaded. Used by
+.BR wrktr_reload .
+.TP
+.B WRKTR_CONFIG_DIR
+Directory containing session configs. Default:
+.IR ~/.config/wrktr .
+.
+.SH FILES
+.TP
+.I ~/.config/wrktr/<name>.env
+Session config files.
+Plain
+.B KEY=value
+text, not executed.
+Created with mode 600.
+.TP
+.I ~/.local/lib/wrktr/worktree-functions.sh
+Default install location used by
+.BR install.sh .
+.
+.SH BRANCH ENCODING
+Slashes in branch names would create nested directories.
+wrktr percent-encodes branch names for use as directory names:
+.B %
+is encoded as
+.B %25
+first, then
+.B /
+as
+.BR %2F .
+.PP
+.TS
+l l .
+Branch name	Directory name
+main	main
+feature/login	feature%2Flogin
+fix/crash-100%	fix%2Fcrash-100%25
+.TE
+.PP
+All
+.B wrktr_*
+commands accept unencoded branch names.
+.BR wrktr_go (1)
+handles encoding automatically.
+.
+.SH DELETION SAFETY
+Every
+.B rm -rf
+operation in wrktr resolves the target to its real absolute path via
+.BR "pwd -P" ,
+verifies it is inside the expected project root, and requires explicit confirmation
+before proceeding.
+.B wrktr_remove
+delegates to
+.BR "git worktree remove" .
+.
+.SH EXAMPLES
+Clone and set up a project:
+.PP
+.nf
+wrktr_clone https://github.com/user/myapp.git
+wrktr_generate myapp
+wrktr_use myapp
+.fi
+.PP
+Start and finish a branch:
+.PP
+.nf
+wrktr_add feature/login
+# ... work ...
+wrktr_push
+wrktr_remove feature/login
+.fi
+.PP
+Check status across all branches:
+.PP
+.nf
+wrktr_status
+.fi
+.PP
+Preview what a command would do without running it:
+.PP
+.nf
+wrktr_dryrun_enable
+wrktr_add feature/test
+wrktr_dryrun_disable
+.fi
+.
+.SH SEE ALSO
+.BR git (1),
+.BR git-worktree (1),
+.BR bash (1)
+.PP
+Full documentation:
+.I wrktr.md
+in the repository root.
+.
+.SH AUTHOR
+wrktr contributors.
+.PP
+Source and issue tracker:
+.I https://github.com/your-username/wrktr
+.
+.SH LICENSE
+MIT License. See
+.I LICENSE
+in the repository root.

@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Static analysis
+  # ---------------------------------------------------------------------------
+  shellcheck:
+    name: Lint (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: |
+          shellcheck worktree-functions.sh
+          shellcheck install.sh
+          shellcheck uninstall.sh
+          shellcheck update.sh
+
+  # ---------------------------------------------------------------------------
+  # Test suite
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests (${{ matrix.os }}, bash ${{ matrix.bash }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux — system bash (bash 5.x)
+          - os: ubuntu-latest
+            bash: system
+          # macOS — system bash (bash 3.2, the macOS default)
+          - os: macos-latest
+            bash: "3.2"
+          # macOS — Homebrew bash (bash 5.x, verifies nothing regressed on newer bash)
+          - os: macos-latest
+            bash: "5.x"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats-core (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
+          sudo /tmp/bats-core/install.sh /usr/local
+
+      - name: Install bats-core and bash (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bats-core bash
+
+      - name: Run tests (system bash)
+        if: matrix.bash != '5.x'
+        run: bats --tap tests/
+
+      - name: Run tests (Homebrew bash 5.x)
+        if: matrix.bash == '5.x'
+        run: |
+          BASH_BIN="$(brew --prefix)/bin/bash"
+          "$BASH_BIN" "$(which bats)" --tap tests/
