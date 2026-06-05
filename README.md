@@ -16,6 +16,7 @@
 
 ## Requirements
 
+- macOS or Linux (Windows requires WSL)
 - bash 3.2 or later (the macOS default is sufficient)
 - git 2.7 or later (git 2.36+ required for `wrktr_init`)
 - rsync (required only by `wrktr_init`)

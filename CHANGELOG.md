@@ -12,8 +12,26 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 ## [Unreleased]
 
+---
+
+## [1.0.1] — 2026-06-05
+
+### Fixed
+- `wrktr_use`: removed the legacy `source "$config"` path; old-format configs with `export ` prefixes are now parsed safely by the KEY=value parser (strips the prefix, never executes the file as shell code)
+- `wrktr_remove`: PWD check now resolves both the current directory and the target path with `pwd -P`, preventing bypass via symlinks or systems where `$TMPDIR` itself is a symlink (e.g. `/tmp` → `/private/tmp` on macOS)
+- `wrktr_clone`: initial worktree directory now uses the detected main branch name instead of the hardcoded string `"main"`
+- `_wrktr_remote_branches`: replaced `sed` with shell parameter expansion to avoid metacharacter injection when remote names contain special characters; `wrktr_checkout` listing uses `grep -F` for the same reason
+- `wrktr_unload`: now unsets `WRKTR_VERSION` along with all other `WRKTR_*` variables
+- `wrktr_clone`, `wrktr_adopt`: print a message before any `rm -rf` cleanup so the operation is visible
+- `install.sh`: validate `SCRIPT_DIR` immediately after assignment and exit with an error if it could not be resolved
+- `wrktr_init`, `wrktr_generate`, `wrktr_adopt`: fail early with a clear error when stdin is not a terminal, preventing hangs in non-interactive environments (CI, piped scripts)
+
 ### Removed
 - Homebrew formula (`Formula/wrktr.rb`) — distribution via a personal tap is not planned
+
+### Added
+- README: explicit platform note that wrktr requires macOS or Linux (Windows needs WSL)
+- Tests: coverage for old-format config loading, symlink-based worktree removal guard, `wrktr_unload` variable cleanup, and non-interactive stdin guards
 
 ---
 
@@ -79,5 +97,6 @@ Initial release.
 
 ---
 
-[Unreleased]: https://github.com/your-username/wrktr/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/your-username/wrktr/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/your-username/wrktr/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/your-username/wrktr/releases/tag/v1.0.0
