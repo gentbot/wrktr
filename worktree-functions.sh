@@ -42,7 +42,8 @@ export WRKTR_VERSION="1.0.0"
 export WRKTR_CONFIG_DIR="$HOME/.config/wrktr"
 export WRKTR_DRY_RUN=0
 export WRKTR_REPO_DIR_NAME="${WRKTR_REPO_DIR_NAME:-.wrktr}"
-export WRKTR_SOURCE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
+WRKTR_SOURCE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
+export WRKTR_SOURCE_PATH
 
 if ! command -v git >/dev/null 2>&1; then
     printf 'wrktr: required dependency not found: git\n' >&2
@@ -1072,6 +1073,7 @@ function _wrktr_create_worktree() {
 # Examples:
 #   wrktr_validate
 # -----------------------------------------------------------------------------
+# shellcheck disable=SC2120
 function wrktr_validate() {
     [ "$1" = "--help" ] && { wrktr_help validate; return 0; }
     local missing=0
@@ -1427,6 +1429,7 @@ function _wrktr_status_print_entry() {
 # Examples:
 #   wrktr_status
 # -----------------------------------------------------------------------------
+# shellcheck disable=SC2120
 function wrktr_status() {
     [ "$1" = "--help" ] && { wrktr_help status; return 0; }
     wrktr_validate || return 1
@@ -1808,6 +1811,7 @@ function wrktr_init() {
         return 1
     fi
 
+    # shellcheck disable=SC2317,SC2329
     function _wrktr_init_cleanup() {
         if [ "$init_success" -eq 1 ] || _wrktr_is_dryrun; then
             unset -f _wrktr_init_cleanup
@@ -2404,6 +2408,7 @@ function wrktr_go() {
 # Examples:
 #   wrktr_update
 # -----------------------------------------------------------------------------
+# shellcheck disable=SC2120
 function wrktr_update() {
     [ "$1" = "--help" ] && { wrktr_help update; return 0; }
     wrktr_validate || return 1
@@ -2905,6 +2910,7 @@ function wrktr_remove() {
 # Examples:
 #   wrktr_unload
 # -----------------------------------------------------------------------------
+# shellcheck disable=SC2120
 function wrktr_unload() {
     [ "$1" = "--help" ] && { wrktr_help unload; return 0; }
     local f
@@ -2951,6 +2957,7 @@ function wrktr_reload() {
         printf 'wrktr: cannot reload — file not found: %s\n' "$src" >&2
         return 1
     fi
+    # shellcheck disable=SC2119
     wrktr_unload
     # shellcheck disable=SC1090
     source "$src"
@@ -3003,28 +3010,35 @@ function _wrktr_worktree_branches() {
 # -----------------------------------------------------------------------------
 # Completion handlers
 # -----------------------------------------------------------------------------
+# SC2207: mapfile/read -a are not available in bash 3.2 (the macOS default).
+# COMPREPLY=($(compgen ...)) is the correct pattern for bash 3.2 compatibility.
 
+# shellcheck disable=SC2207
 function _wrktr_complete_use() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     COMPREPLY=($(compgen -W "$(_wrktr_sessions)" -- "$cur"))
 }
 
+# shellcheck disable=SC2207
 function _wrktr_complete_go() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     COMPREPLY=($(compgen -W "$(_wrktr_worktree_branches)" -- "$cur"))
 }
 
+# shellcheck disable=SC2207
 function _wrktr_complete_remove() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local main="${WRKTR_MAIN_BRANCH:-main}"
     COMPREPLY=($(compgen -W "$(_wrktr_worktree_branches | grep -v "^${main}$")" -- "$cur"))
 }
 
+# shellcheck disable=SC2207
 function _wrktr_complete_checkout() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     COMPREPLY=($(compgen -W "$(_wrktr_remote_branches)" -- "$cur"))
 }
 
+# shellcheck disable=SC2207
 function _wrktr_complete_add() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     case $COMP_CWORD in
@@ -3033,6 +3047,7 @@ function _wrktr_complete_add() {
     esac
 }
 
+# shellcheck disable=SC2207
 function _wrktr_complete_git() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local subcmds="fetch pull push log branch status diff show worktree remote tag stash"
@@ -3042,6 +3057,7 @@ function _wrktr_complete_git() {
     esac
 }
 
+# shellcheck disable=SC2207
 function _wrktr_complete_passthrough() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local subcmds="list add remove lock unlock move prune repair"
