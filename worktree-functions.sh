@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-export WRKTR_VERSION="1.0.0"
+export WRKTR_VERSION="1.0.1"
 export WRKTR_CONFIG_DIR="$HOME/.config/wrktr"
 export WRKTR_DRY_RUN=0
 export WRKTR_REPO_DIR_NAME="${WRKTR_REPO_DIR_NAME:-.wrktr}"
@@ -1511,23 +1511,22 @@ function wrktr_use() {
     fi
 
     if grep -q '^export WRKTR_' "$config" 2>/dev/null; then
-        printf 'wrktr: session "%s" uses the old shell-script config format.\n' "$session" >&2
-        printf 'To migrate: wrktr_config_edit — remove the "export " prefix from each line.\n\n' >&2
-        # shellcheck disable=SC1090
-        source "$config"
-    else
-        local _line _key _value
-        while IFS= read -r _line; do
-            case "$_line" in
-                ''|'#'*) continue ;;
-            esac
-            _key="${_line%%=*}"
-            _value="${_line#*=}"
-            case "$_key" in
-                WRKTR_*) export "$_key"="$_value" ;;
-            esac
-        done < "$config"
+        printf 'wrktr: session "%s" uses the old config format (has "export " prefix).\n' "$session" >&2
+        printf 'To migrate: wrktr_config_edit — remove "export " from each line.\n\n' >&2
     fi
+
+    local _line _key _value
+    while IFS= read -r _line; do
+        case "$_line" in
+            ''|'#'*) continue ;;
+        esac
+        _key="${_line%%=*}"
+        _key="${_key#export }"
+        _value="${_line#*=}"
+        case "$_key" in
+            WRKTR_*) export "$_key"="$_value" ;;
+        esac
+    done < "$config"
 
     if ! wrktr_validate; then
         _wrktr_breaker red "wrktr session validation failed: $session"
@@ -1574,6 +1573,11 @@ function wrktr_use() {
 function wrktr_generate() {
     [ "$1" = "--help" ] && { wrktr_help generate; return 0; }
     local session="$1"
+
+    if [ -z "$session" ] && [ ! -t 0 ]; then
+        _wrktr_breaker red "wrktr_generate requires an interactive terminal when no session name is given"
+        return 1
+    fi
 
     if [ -z "$session" ]; then
         # read -r -p "Session name: " session
@@ -1728,6 +1732,10 @@ function wrktr_generate() {
 # -----------------------------------------------------------------------------
 function wrktr_init() {
     [ "$1" = "--help" ] && { wrktr_help init; return 0; }
+    if [ ! -t 0 ]; then
+        _wrktr_breaker red "wrktr_init requires an interactive terminal"
+        return 1
+    fi
     if ! command -v rsync >/dev/null 2>&1; then
         _wrktr_breaker red "rsync is required by wrktr_init but was not found"
         return 1
@@ -1999,6 +2007,7 @@ function wrktr_clone() {
 
     if ! git clone --bare "$url" "$repo_dir"; then
         _wrktr_breaker red "Clone failed"
+        _wrktr_breaker "Cleaning up: $abs_destination"
         rm -rf "$abs_destination"
         return 1
     fi
@@ -2034,6 +2043,8 @@ function wrktr_clone() {
         printf '  wrktr_generate\n\n'
         return 0
     fi
+
+    worktree_dir="$abs_destination/$(_wrktr_sanitize_branch_name "$main_branch")"
 
     _wrktr_breaker "Detected main branch: $main_branch"
     _wrktr_breaker "Creating main worktree: $worktree_dir"
@@ -2092,6 +2103,10 @@ function wrktr_clone() {
 # -----------------------------------------------------------------------------
 function wrktr_adopt() {
     [ "$1" = "--help" ] && { wrktr_help adopt; return 0; }
+    if [ ! -t 0 ]; then
+        _wrktr_breaker red "wrktr_adopt requires an interactive terminal"
+        return 1
+    fi
     local existing_path="${1:-}"
 
     if [ -z "$existing_path" ]; then
@@ -2198,6 +2213,7 @@ function wrktr_adopt() {
     _wrktr_breaker "Creating bare clone..."
     if ! git clone --bare "$abs_existing" "$repo_dir"; then
         _wrktr_breaker red "Failed to create bare clone"
+        _wrktr_breaker "Cleaning up: $abs_trunk"
         rm -rf "$abs_trunk"
         return 1
     fi
@@ -2215,6 +2231,7 @@ function wrktr_adopt() {
     _wrktr_breaker "Creating main worktree: $worktree_dir"
     if ! git --git-dir="$repo_dir" worktree add "$worktree_dir" "$main_branch"; then
         _wrktr_breaker red "Failed to create main worktree"
+        _wrktr_breaker "Cleaning up: $abs_trunk"
         rm -rf "$abs_trunk"
         return 1
     fi
@@ -2749,9 +2766,10 @@ function wrktr_checkout() {
         if ! git --git-dir="$WRKTR_BASE_DIR" rev-parse --verify "$remote_ref" >/dev/null 2>&1; then
             _wrktr_breaker red "Remote branch not found: $remote_ref"
             printf '\nAvailable remote branches:\n'
+            local _remote="$WRKTR_REMOTE"
             git --git-dir="$WRKTR_BASE_DIR" branch -r 2>/dev/null \
-                | grep "^  $WRKTR_REMOTE/" \
-                | sed "s|  $WRKTR_REMOTE/||" \
+                | grep -F "  $_remote/" \
+                | while IFS= read -r _ref; do printf '%s\n' "${_ref#"  $_remote/"}"; done \
                 | head -20
             printf '\n'
             return 1
@@ -2831,8 +2849,11 @@ function wrktr_remove() {
 
     local target="$WRKTR_BASE_TRUNK/$safe_branch"
 
-    case "$PWD" in
-        "$target"/*|"$target")
+    local resolved_pwd resolved_target
+    resolved_pwd="$(pwd -P 2>/dev/null || printf '%s' "$PWD")"
+    resolved_target="$(cd "$target" 2>/dev/null && pwd -P 2>/dev/null || printf '%s' "$target")"
+    case "$resolved_pwd" in
+        "$resolved_target"/*|"$resolved_target")
             _wrktr_breaker red "Cannot remove worktree while inside it. Please cd out first."
             return 1
             ;;
@@ -2903,6 +2924,9 @@ function wrktr_remove() {
 #   Use this when you want to reload a modified version of the file, cleanly
 #   remove wrktr from a session, or test changes from scratch.
 #
+#   Note: removes all functions matching ^_?wrktr (i.e. wrktr_* and _wrktr_*).
+#   If you have your own functions with a wrktr_ or _wrktr_ prefix they will
+#   also be removed.
 #
 # Exit codes:
 #   0 — always
@@ -2918,6 +2942,7 @@ function wrktr_unload() {
         unset -f "$f"
     done < <(compgen -A function | grep -E '^_?wrktr')
 
+    unset WRKTR_VERSION
     unset WRKTR_NAME
     unset WRKTR_BASE_TRUNK
     unset WRKTR_BASE_DIR
@@ -2996,8 +3021,9 @@ function _wrktr_local_branches() {
 
 function _wrktr_remote_branches() {
     [ -z "$WRKTR_BASE_DIR" ] || [ -z "$WRKTR_REMOTE" ] && return
+    local _remote="$WRKTR_REMOTE"
     git --git-dir="$WRKTR_BASE_DIR" branch -r --format='%(refname:short)' 2>/dev/null \
-        | sed "s|^${WRKTR_REMOTE}/||"
+        | while IFS= read -r _ref; do printf '%s\n' "${_ref#"$_remote/"}"; done
 }
 
 function _wrktr_worktree_branches() {

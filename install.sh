@@ -9,6 +9,10 @@ INSTALL_FILE="$INSTALL_DIR/worktree-functions.sh"
 MAN_DIR="$HOME/.local/share/man/man1"
 MAN_FILE="$MAN_DIR/wrktr.1"
 SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)"
+if [ -z "$SCRIPT_DIR" ]; then
+    printf 'Error: cannot resolve script directory\n' >&2
+    exit 1
+fi
 SOURCE_FILE="$SCRIPT_DIR/worktree-functions.sh"
 SOURCE_MAN="$SCRIPT_DIR/docs/wrktr.1"
 

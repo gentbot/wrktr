@@ -53,6 +53,8 @@ teardown() {
     rm -rf "$BATS_TMPDIR/wrktr-trunk-$$-"*
     rm -rf "$BATS_TMPDIR/wrktr-parent-$$"
     rm -rf "$BATS_TMPDIR/wrktr-outside-$$"
+    rm -f  "$BATS_TMPDIR/wrktr-symlink-$$"
+    rm -f  "$BATS_TMPDIR/wrktr-sentinel-$$"
 }
 
 # ===========================================================================
@@ -285,6 +287,40 @@ EOF
     [ "$status" -eq 1 ]
 }
 
+@test "wrktr_use: loads old export-format config safely" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-$RANDOM"
+    _make_bare_repo "$trunk"
+
+    cat > "$WRKTR_CONFIG_DIR/testproject.env" <<EOF
+export WRKTR_NAME=testproject
+export WRKTR_BASE_TRUNK=$trunk
+export WRKTR_BASE_DIR=$trunk/.wrktr
+export WRKTR_REMOTE=
+export WRKTR_MAIN_BRANCH=main
+EOF
+
+    run wrktr_use "testproject"
+    [ "$status" -eq 0 ]
+}
+
+@test "wrktr_use: old-format config does not execute embedded shell code" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-$RANDOM"
+    _make_bare_repo "$trunk"
+    local sentinel="$BATS_TMPDIR/wrktr-sentinel-$$"
+
+    cat > "$WRKTR_CONFIG_DIR/testproject.env" <<EOF
+export WRKTR_NAME=testproject
+export WRKTR_BASE_TRUNK=$trunk
+export WRKTR_BASE_DIR=$trunk/.wrktr
+export WRKTR_REMOTE=
+export WRKTR_MAIN_BRANCH=main
+touch $sentinel
+EOF
+
+    run wrktr_use "testproject"
+    [ ! -f "$sentinel" ]
+}
+
 # ===========================================================================
 # wrktr_generate (dry-run output)
 # ===========================================================================
@@ -322,6 +358,73 @@ EOF
     _make_bare_repo "$trunk"
     run wrktr_remove
     [ "$status" -eq 1 ]
+}
+
+@test "wrktr_remove: refuses to remove when inside worktree via symlink" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-$RANDOM"
+    _make_bare_repo "$trunk"
+
+    local target="$trunk/feature%2Ftest"
+    mkdir -p "$target"
+
+    local symlink="$BATS_TMPDIR/wrktr-symlink-$$"
+    ln -s "$target" "$symlink"
+
+    cd "$symlink"
+    run wrktr_remove "feature/test"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Cannot remove worktree while inside it" ]]
+}
+
+# ===========================================================================
+# wrktr_unload
+# ===========================================================================
+
+@test "wrktr_unload: removes wrktr functions from the shell" {
+    run bash -c "source \"$WRKTR_FUNCTIONS\" && wrktr_unload && type wrktr_validate 2>&1"
+    [[ "$output" =~ "not found" ]]
+}
+
+@test "wrktr_unload: unsets WRKTR_VERSION" {
+    run bash -c "source \"$WRKTR_FUNCTIONS\" && wrktr_unload && echo \"\${WRKTR_VERSION:-unset}\""
+    [[ "$output" =~ "unset" ]]
+}
+
+@test "wrktr_unload: unsets session variables" {
+    run bash -c "source \"$WRKTR_FUNCTIONS\" && export WRKTR_NAME=test && wrktr_unload && echo \"\${WRKTR_NAME:-unset}\""
+    [[ "$output" =~ "unset" ]]
+}
+
+# ===========================================================================
+# Non-interactive guards
+# ===========================================================================
+
+@test "wrktr_init: fails when stdin is not a terminal" {
+    run wrktr_init </dev/null
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "requires an interactive terminal" ]]
+}
+
+@test "wrktr_generate: fails when stdin is not a terminal and no session arg" {
+    run wrktr_generate </dev/null
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "requires an interactive terminal" ]]
+}
+
+@test "wrktr_generate: succeeds with session arg even when stdin is not a terminal" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-$RANDOM"
+    _make_bare_repo "$trunk"
+    printf 'WRKTR_NAME=testproject\nWRKTR_BASE_TRUNK=%s\nWRKTR_BASE_DIR=%s/.wrktr\nWRKTR_REMOTE=\nWRKTR_MAIN_BRANCH=main\n' \
+        "$trunk" "$trunk" > "$WRKTR_CONFIG_DIR/testproject.env"
+    # Passing a session name skips the interactive prompts; should not block on stdin
+    run bash -c "source \"$WRKTR_FUNCTIONS\" && WRKTR_CONFIG_DIR=\"$WRKTR_CONFIG_DIR\" wrktr_generate --help </dev/null"
+    [ "$status" -eq 0 ]
+}
+
+@test "wrktr_adopt: fails when stdin is not a terminal" {
+    run wrktr_adopt </dev/null
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "requires an interactive terminal" ]]
 }
 
 # ===========================================================================
