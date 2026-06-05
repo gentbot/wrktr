@@ -12,6 +12,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 ## [Unreleased]
 
+### Removed
+- Homebrew formula (`Formula/wrktr.rb`) — distribution via a personal tap is not planned
+
 ---
 
 ## [1.0.0] — 2024
