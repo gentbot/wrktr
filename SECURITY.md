@@ -12,7 +12,7 @@ Older versions receive no security fixes. Please update to the latest release.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Use [GitHub's private vulnerability reporting](https://github.com/gentbot/wrktr/security/advisories/new) to report a vulnerability confidentially. You will receive a response within 7 days acknowledging the report. If the issue is confirmed, a fix will be released as soon as possible and you will be credited in the changelog unless you prefer otherwise.
+Use [GitHub's private vulnerability reporting](https://github.com/gentbot/wrktr/security/advisories/new) to report a vulnerability confidentially. You will receive a response within 30 days ( or less ) acknowledging the report. If the issue is confirmed, a fix will be released as soon as possible and you will be credited in the changelog unless you prefer otherwise.
 
 Please include:
 
