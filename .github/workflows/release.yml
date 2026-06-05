@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog entry
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          awk -v hdr="## [$version]" \
+            'index($0,hdr)==1{found=1;next} found && /^---/{exit} found{print}' \
+            CHANGELOG.md > release_notes.txt
+
+      - name: Generate checksum
+        run: sha256sum worktree-functions.sh > worktree-functions.sh.sha256
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release_notes.txt \
+            worktree-functions.sh \
+            worktree-functions.sh.sha256
