@@ -1,5 +1,9 @@
 # wrktr
 
+<p align="center">
+  <img src=".github/assets/logo.png" alt="wrktr" width="200">
+</p>
+
 `wrktr` treats git branches as persistent directories instead of transient checkout states. You switch contexts by changing directories — every branch you are working on has its own folder on disk and nothing is ever stashed or lost.
 
 ```
