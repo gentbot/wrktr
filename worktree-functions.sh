@@ -917,7 +917,11 @@ function wrktr_git() {
 # -----------------------------------------------------------------------------
 function _wrktr_sanitize_branch_name() {
     local branch="$1"
-    branch="${branch//%/%25}"
+
+    if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+        return 1
+    fi
+
     echo "${branch//\//%2F}"
 }
 
