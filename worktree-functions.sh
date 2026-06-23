@@ -921,7 +921,22 @@ function _wrktr_sanitize_branch_name() {
     if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
         return 1
     fi
-    echo "${branch//\//%2F}"
+
+    # Require the original branch name to end in a letter or number.
+    # This prevents trailing %, -, _, ., etc. from becoming acceptable after encoding.
+    if [[ ! "$branch" =~ [A-Za-z0-9]$ ]]; then
+        return 1
+    fi
+
+    branch="${branch//%/%25}"
+    branch="${branch//\//%2F}"
+
+    # Allow only safe output characters and known encodings.
+    if [[ ! "$branch" =~ ^([A-Za-z0-9._-]|%2F|%25)+$ ]]; then
+        return 1
+    fi
+
+    printf '%s\n' "$branch"
 }
 
 # -----------------------------------------------------------------------------
