@@ -66,6 +66,21 @@ teardown() {
     [ "$result" = "main" ]
 }
 
+@test "_wrktr_sanitize_branch_name: plain name with dash is unchanged" {
+    result="$(_wrktr_sanitize_branch_name "fix-crash-100")"
+    [ "$result" = "fix-crash-100" ]
+}
+
+@test "_wrktr_sanitize_branch_name: plain name with underscore is unchanged" {
+    result="$(_wrktr_sanitize_branch_name "fix_crash_100")"
+    [ "$result" = "fix_crash_100" ]
+}
+
+@test "_wrktr_sanitize_branch_name: plain name with dot is unchanged" {
+    result="$(_wrktr_sanitize_branch_name "release.2026")"
+    [ "$result" = "release.2026" ]
+}
+
 @test "_wrktr_sanitize_branch_name: single slash encoded as %2F" {
     result="$(_wrktr_sanitize_branch_name "feature/login")"
     [ "$result" = "feature%2Flogin" ]
@@ -76,14 +91,74 @@ teardown() {
     [ "$result" = "a%2Fb%2Fc" ]
 }
 
-@test "_wrktr_sanitize_branch_name: percent encoded before slash to avoid double-encoding" {
-    result="$(_wrktr_sanitize_branch_name "fix/crash-100%")"
-    [ "$result" = "fix%2Fcrash-100%25" ]
-}
-
-@test "_wrktr_sanitize_branch_name: existing percent-sign is escaped first" {
+@test "_wrktr_sanitize_branch_name: existing percent-sign is escaped before slash encoding" {
     result="$(_wrktr_sanitize_branch_name "already%2Fencoded")"
     [ "$result" = "already%252Fencoded" ]
+}
+
+@test "_wrktr_sanitize_branch_name: internal percent-sign is escaped" {
+    result="$(_wrktr_sanitize_branch_name "fix/100%repro")"
+    [ "$result" = "fix%2F100%25repro" ]
+}
+
+@test "_wrktr_sanitize_branch_name: trailing percent is rejected" {
+    run _wrktr_sanitize_branch_name "fix/crash-100%"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: trailing dash is rejected" {
+    run _wrktr_sanitize_branch_name "fix/crash-100-"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: trailing underscore is rejected" {
+    run _wrktr_sanitize_branch_name "fix/crash-100_"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: trailing dot is rejected by git" {
+    run _wrktr_sanitize_branch_name "fix/crash-100."
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: space is rejected" {
+    run _wrktr_sanitize_branch_name "feature/bad name"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: exclamation mark is rejected" {
+    run _wrktr_sanitize_branch_name "feature/bad!"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: at sign is rejected by git" {
+    run _wrktr_sanitize_branch_name "@"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: double dot is rejected by git" {
+    run _wrktr_sanitize_branch_name "feature/foo..bar"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: lock suffix is rejected by git" {
+    run _wrktr_sanitize_branch_name "feature/foo.lock"
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
+}
+
+@test "_wrktr_sanitize_branch_name: empty branch is rejected" {
+    run _wrktr_sanitize_branch_name ""
+    [ "$status" -eq 1 ]
+    [ "$output" = "" ]
 }
 
 # ===========================================================================

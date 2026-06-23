@@ -14,6 +14,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 ---
 
+## [1.0.2] — 2026-06-23
+### Fixed
+- `_wrktr_sanitize_branch_name`: Fixed branch naming bug. Previously was adding an arbitrary `%` to the end of the branch and riectory name
+
+
 ## [1.0.1] — 2026-06-05
 
 ### Fixed
