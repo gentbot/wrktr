@@ -30,10 +30,12 @@
 ## Install
 
 ```bash
-git clone https://github.com/your-username/wrktr.git
+git clone https://github.com/gentbot/wrktr.git
 cd wrktr
 ./install.sh
 ```
+
+`install.sh` copies the script into `~/.local/lib/wrktr/` and asks before adding a `source` line to your shell profile. Run it with `--yes` to add the line without being asked, or `--no-profile` to never touch the profile (it prints the line for you to add yourself). When it is not run in a terminal it leaves the profile alone.
 
 Then open a new terminal, or reload your shell profile:
 

@@ -14,7 +14,7 @@ git -C "$SCRIPT_DIR" pull
 printf '\n'
 
 # Reinstall
-"$SCRIPT_DIR/install.sh"
+"$SCRIPT_DIR/install.sh" "$@"
 
 printf '\nTo pick up changes in any open terminal:\n\n'
 printf '  wrktr_reload\n\n'

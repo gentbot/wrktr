@@ -90,9 +90,15 @@ copies
 .I worktree-functions.sh
 to
 .I ~/.local/lib/wrktr/
-and appends a
+and, only with your consent, appends a
 .B source
-line to the detected shell profile.
+line to the detected shell profile. Pass
+.B \-\-yes
+to add the line without being asked, or
+.B \-\-no\-profile
+to leave the profile untouched. When not run in a terminal,
+.B install.sh
+never edits the profile.
 .PP
 To install manually, add to
 .I ~/.zshrc

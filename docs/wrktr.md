@@ -355,7 +355,9 @@ wrktr_adopt           # interactive prompts
 | `Main branch` | detected from HEAD | Branch to use as the main worktree. |
 | `New trunk directory` | `<parent>/<name>-wrktr` | Where to create the new structure. |
 
-Creates a bare clone of the existing repo, removes the auto-added local-path remote, restores the original upstream remote if one existed, and creates the main worktree. The original clone is unchanged.
+Creates a bare clone of the existing repo, removes the auto-added local-path remote, restores every remote the original clone had, and creates the main worktree. The original clone is unchanged.
+
+Only committed state is carried over. If the original clone has uncommitted changes or stash entries, `wrktr_adopt` lists them and asks before continuing; they stay in the original clone.
 
 After adopting, run `wrktr_generate` then `wrktr_use`.
 
@@ -587,7 +589,7 @@ Pushes the current branch to the configured remote.
 wrktr_push
 ```
 
-Must be run from inside a worktree belonging to the loaded project. Refuses to push the main branch. Attempts a regular push first; if rejected (expected after a rebase), prompts before retrying with `--force-with-lease`. Requires a remote to be configured.
+Must be run from inside a worktree belonging to the loaded project. Refuses to push the main branch. Pushes with `-u`, so the branch tracks the remote afterwards. If the push is rejected (expected after a rebase), it prompts before retrying with `--force-with-lease`; other failures such as authentication or network errors are reported without offering a force push. Requires a remote to be configured.
 
 ---
 
@@ -665,8 +667,11 @@ Prints every mutating command without executing it. Validation still runs.
 ```bash
 wrktr_dryrun_enable
 wrktr_add feature/test      # shows what would happen, does nothing
+wrktr_dryrun_status         # reports whether dry-run is enabled
 wrktr_dryrun_disable
 ```
+
+Read-only git commands (`log`, `status`, `diff`, `rev-parse`, listing branches, and so on) still run through `wrktr_git` in dry-run mode; anything that could change the repository is only printed.
 
 ---
 
@@ -694,7 +699,9 @@ Unloads all wrktr functions and re-sources the file from its original path.
 wrktr_reload
 ```
 
-Use this after editing `worktree-functions.sh` to pick up changes without opening a new shell. The source path is captured automatically when the file is first sourced.
+Use this after editing `worktree-functions.sh` to pick up changes without opening a new shell. The source path is captured automatically when the file is first sourced (in bash and zsh).
+
+Your loaded session, dry-run state, `WRKTR_CONFIG_DIR` and `WRKTR_REPO_DIR_NAME` are kept across the reload. If the file no longer parses, the reload is refused and the version already loaded stays in place.
 
 ---
 
@@ -740,6 +747,7 @@ All `wrktr_*` commands accept original branch names. `wrktr_go` also handles enc
 | `WRKTR_MAIN_BRANCH` | Primary branch name |
 | `WRKTR_DRY_RUN` | `1` when dry-run is active, `0` otherwise |
 | `WRKTR_REPO_DIR_NAME` | Name of the bare git database directory. Defaults to `.wrktr`. Set before sourcing to override. |
+| `WRKTR_VERBOSE` | Set to `1` before sourcing to print a "Worktree functions loaded" banner. Silent by default. |
 | `WRKTR_SOURCE_PATH` | Absolute path to `worktree-functions.sh` as loaded. Used by `wrktr_reload`. |
 
 ### Why `.wrktr` and not `.git`

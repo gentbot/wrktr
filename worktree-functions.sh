@@ -291,6 +291,80 @@ function _wrktr_git_run() {
     _wrktr_run git --git-dir="$git_dir" "$@"
 }
 
+# -----------------------------------------------------------------------------
+# _wrktr_expand_tilde
+# -----------------------------------------------------------------------------
+# What it does:
+#   Expands a leading ~ or ~/ in a path that was typed at a prompt. The shell
+#   only expands ~ in command arguments, not in text read with `read`.
+#
+# Arguments:
+#   $1 — path
+#
+# Output:
+#   Echoes the path with a leading ~ replaced by $HOME.
+#
+# Examples:
+#   trunk="$(_wrktr_expand_tilde "$trunk")"
+# -----------------------------------------------------------------------------
+function _wrktr_expand_tilde() {
+    # The quoted "~/" is a deliberate literal match against typed text.
+    # shellcheck disable=SC2088
+    case "$1" in
+        "~")   printf '%s\n' "$HOME" ;;
+        "~/"*) printf '%s\n' "$HOME/${1#"~/"}" ;;
+        *)     printf '%s\n' "$1" ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# _wrktr_git_is_readonly
+# -----------------------------------------------------------------------------
+# What it does:
+#   Decides whether a git invocation only reads state. Used by wrktr_git so
+#   dry-run mode can still run inspection commands and only print mutating ones.
+#   Unknown commands are treated as mutating.
+#
+# Arguments:
+#   All arguments are the git subcommand and its arguments.
+#
+# Exit codes:
+#   0 — read-only
+#   1 — may modify the repository (or unknown)
+#
+# Examples:
+#   _wrktr_git_is_readonly log --oneline
+# -----------------------------------------------------------------------------
+function _wrktr_git_is_readonly() {
+    case "$1" in
+        rev-parse|rev-list|log|show|diff|status|ls-files|ls-tree|cat-file|for-each-ref|describe|blame|shortlog|merge-base|name-rev|show-ref|show-branch|grep)
+            return 0
+            ;;
+        worktree)
+            [ "$2" = "list" ]
+            ;;
+        remote)
+            [ "$#" -eq 1 ] || [ "$2" = "-v" ] || [ "$2" = "get-url" ]
+            ;;
+        branch)
+            [ "$#" -eq 1 ] && return 0
+            case "$2" in
+                -a|-r|-v|-vv|--list|--show-current|--merged|--no-merged|--contains) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        config)
+            case "$2" in
+                --get|--get-all|--get-regexp|--list|-l) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 
 # -----------------------------------------------------------------------------
 # wrktr_dryrun_enable
@@ -891,7 +965,7 @@ function wrktr_git() {
     [ "$1" = "--help" ] && { wrktr_help git; return 0; }
     wrktr_validate || return 1
 
-    if _wrktr_is_dryrun; then
+    if _wrktr_is_dryrun && ! _wrktr_git_is_readonly "$@"; then
         printf '[DRY RUN] '
         printf '%q ' git --git-dir="$WRKTR_BASE_DIR" "$@"
         printf '\n'
@@ -1423,8 +1497,9 @@ function _wrktr_status_print_entry() {
     local ahead=0
     local behind=0
     if git --git-dir="$WRKTR_BASE_DIR" rev-parse --verify "$compare_ref" >/dev/null 2>&1; then
-        ahead=$(git --git-dir="$WRKTR_BASE_DIR" rev-list --count "${compare_ref}..${branch}" 2>/dev/null || printf '0')
-        behind=$(git --git-dir="$WRKTR_BASE_DIR" rev-list --count "${branch}..${compare_ref}" 2>/dev/null || printf '0')
+        # Use the worktree's own HEAD so detached worktrees are measured too.
+        ahead=$(git -C "$path" rev-list --count "${compare_ref}..HEAD" 2>/dev/null || printf '0')
+        behind=$(git -C "$path" rev-list --count "HEAD..${compare_ref}" 2>/dev/null || printf '0')
     fi
 
     local ab=""
@@ -1646,6 +1721,7 @@ function wrktr_generate() {
 
     printf "Base trunk path: "
     read -r trunk
+    trunk="$(_wrktr_expand_tilde "$trunk")"
 
     if [ -z "$trunk" ]; then
         _wrktr_breaker red "Base trunk path cannot be empty"
@@ -1783,6 +1859,7 @@ function wrktr_init() {
 
     printf "Project root path: "
     read -r root
+    root="$(_wrktr_expand_tilde "$root")"
 
     if [ -z "$root" ]; then
         _wrktr_breaker red "Project root path cannot be empty"
@@ -1915,7 +1992,10 @@ function wrktr_init() {
         return 1
     fi
 
-    _wrktr_confirm_rm "$tmp_dir" "$abs_root"
+    local kept_tmp_dir=""
+    if ! _wrktr_confirm_rm "$tmp_dir" "$abs_root"; then
+        kept_tmp_dir="$tmp_dir"
+    fi
     tmp_dir=""
 
     if ! _wrktr_is_dryrun; then
@@ -1944,6 +2024,12 @@ function wrktr_init() {
         _wrktr_breaker "[DRY RUN] wrktr repository initialization simulation complete"
     else
         _wrktr_breaker "wrktr repository initialized successfully"
+        if [ -n "$kept_tmp_dir" ]; then
+            _wrktr_breaker yellow "Temporary directory was not removed: $kept_tmp_dir"
+            printf 'Your files were restored into the main worktree. Remove it when ready:\n'
+            printf '  rm -rf %s\n' "$kept_tmp_dir"
+            printf 'It must be gone before wrktr_init can be run again in this project.\n'
+        fi
         printf '\nNext steps:\n'
         printf '  1. Create a session config:  wrktr_generate\n'
         printf '  2. Load the session:         wrktr_use <session-name>\n'
@@ -2047,7 +2133,7 @@ function wrktr_clone() {
         return 1
     }
 
-    if ! git clone --bare "$url" "$repo_dir"; then
+    if ! git clone --bare -- "$url" "$repo_dir"; then
         _wrktr_breaker red "Clone failed"
         _wrktr_breaker "Cleaning up: $abs_destination"
         rm -rf "$abs_destination"
@@ -2163,6 +2249,7 @@ function wrktr_adopt() {
         printf "Path to existing git clone: "
         read -r existing_path
     fi
+    existing_path="$(_wrktr_expand_tilde "$existing_path")"
 
     if [ -z "$existing_path" ]; then
         _wrktr_breaker red "Path cannot be empty"
@@ -2190,6 +2277,7 @@ function wrktr_adopt() {
     [ -z "$main_branch" ] && main_branch="main"
 
     printf "Main branch [%s]: " "$main_branch"
+    local input_branch
     read -r input_branch
     main_branch="${input_branch:-$main_branch}"
 
@@ -2199,6 +2287,7 @@ function wrktr_adopt() {
     local trunk_path
     read -r trunk_path
     trunk_path="${trunk_path:-$suggested_trunk}"
+    trunk_path="$(_wrktr_expand_tilde "$trunk_path")"
 
     if [ -z "$trunk_path" ]; then
         _wrktr_breaker red "Trunk path cannot be empty"
@@ -2242,14 +2331,37 @@ function wrktr_adopt() {
     local repo_dir="$abs_trunk/$WRKTR_REPO_DIR_NAME"
     local worktree_dir="$abs_trunk/$main_worktree_name"
 
+    # Only committed state is cloned. Warn about anything that would be left behind.
+    local dirty_count stash_count
+    dirty_count="$(git -C "$abs_existing" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+    stash_count="$(git -C "$abs_existing" stash list 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$dirty_count" -gt 0 ] || [ "$stash_count" -gt 0 ]; then
+        _wrktr_breaker yellow "The original clone has work that will NOT be carried over:"
+        [ "$dirty_count" -gt 0 ] && printf '  - %s uncommitted change(s) (they stay in the original clone)\n' "$dirty_count"
+        [ "$stash_count" -gt 0 ] && printf '  - %s stash entr(y/ies) (they stay in the original clone)\n' "$stash_count"
+        if ! _wrktr_is_dryrun; then
+            local proceed
+            printf 'Continue anyway? [y/N]: '
+            read -r proceed
+            case "$proceed" in
+                y|Y|yes|YES) ;;
+                *)
+                    _wrktr_breaker "Adoption cancelled."
+                    return 1
+                    ;;
+            esac
+        fi
+    fi
+
     if _wrktr_is_dryrun; then
         _wrktr_breaker "[DRY RUN] Would adopt $abs_existing"
         printf '[DRY RUN] mkdir %q\n' "$abs_trunk"
         printf '[DRY RUN] git clone --bare %q %q\n' "$abs_existing" "$repo_dir"
         printf '[DRY RUN] git --git-dir=%q worktree add %q %q\n' "$repo_dir" "$worktree_dir" "$main_branch"
-        if [ -n "$original_remote_url" ]; then
-            printf '[DRY RUN] Restore remote origin: %s\n' "$original_remote_url"
-        fi
+        local dry_remote
+        while IFS= read -r dry_remote; do
+            [ -n "$dry_remote" ] && printf '[DRY RUN] Restore remote %s: %s\n' "$dry_remote" "$(git -C "$abs_existing" remote get-url "$dry_remote" 2>/dev/null)"
+        done < <(git -C "$abs_existing" remote 2>/dev/null)
         return 0
     fi
 
@@ -2272,11 +2384,15 @@ function wrktr_adopt() {
     # that and restore the actual upstream remote if the original had one.
     git --git-dir="$repo_dir" remote remove origin 2>/dev/null || true
 
-    if [ -n "$original_remote_url" ]; then
-        git --git-dir="$repo_dir" remote add origin "$original_remote_url"
-        git --git-dir="$repo_dir" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
-        _wrktr_breaker "Restored remote: origin → $original_remote_url"
-    fi
+    # Restore every remote the original clone had, not just origin.
+    local remote_name remote_url
+    while IFS= read -r remote_name; do
+        [ -n "$remote_name" ] || continue
+        remote_url="$(git -C "$abs_existing" remote get-url "$remote_name" 2>/dev/null)" || continue
+        git --git-dir="$repo_dir" remote add "$remote_name" "$remote_url"
+        git --git-dir="$repo_dir" config "remote.$remote_name.fetch" "+refs/heads/*:refs/remotes/$remote_name/*"
+        _wrktr_breaker "Restored remote: $remote_name → $remote_url"
+    done < <(git -C "$abs_existing" remote 2>/dev/null)
 
     _wrktr_breaker "Creating main worktree: $worktree_dir"
     if ! git --git-dir="$repo_dir" worktree add "$worktree_dir" "$main_branch"; then
@@ -2623,10 +2739,24 @@ function wrktr_push() {
 
     _wrktr_breaker "Pushing $current_branch to $WRKTR_REMOTE"
 
-    if git push "$WRKTR_REMOTE" "$current_branch"; then
+    local push_out
+    if push_out="$(git push -u "$WRKTR_REMOTE" "$current_branch" 2>&1)"; then
+        [ -n "$push_out" ] && printf '%s\n' "$push_out"
         _wrktr_breaker "Pushed $current_branch successfully"
         return 0
     fi
+
+    printf '%s\n' "$push_out" >&2
+
+    # Only a rejected (non-fast-forward) push is worth offering a force push
+    # for. Auth, network and hook failures are not fixed by forcing.
+    case "$push_out" in
+        *"[rejected]"*|*"non-fast-forward"*|*"fetch first"*|*"stale info"*) ;;
+        *)
+            _wrktr_breaker red "Push failed; see the git output above."
+            return 1
+            ;;
+    esac
 
     _wrktr_breaker yellow "Push was rejected."
     printf '\nThis usually means the remote has commits not in your local history,\n'
@@ -2638,7 +2768,7 @@ function wrktr_push() {
     read -r answer </dev/tty
     case "$answer" in
         y|Y|yes|YES)
-            if git push --force-with-lease "$WRKTR_REMOTE" "$current_branch"; then
+            if git push --force-with-lease -u "$WRKTR_REMOTE" "$current_branch"; then
                 _wrktr_breaker "Pushed $current_branch with --force-with-lease"
                 return 0
             else
@@ -2725,7 +2855,7 @@ function wrktr_add() {
         base_ref="$2"
     elif [ -n "$WRKTR_REMOTE" ]; then
         base_ref="$WRKTR_REMOTE/$WRKTR_MAIN_BRANCH"
-        wrktr_update || return 1
+        wrktr_update || _wrktr_breaker yellow "Fetch failed; continuing with the refs fetched previously"
     else
         base_ref="$WRKTR_MAIN_BRANCH"
     fi
@@ -2816,7 +2946,7 @@ function wrktr_checkout() {
     }
     local target="$WRKTR_BASE_TRUNK/$safe_branch"
 
-    wrktr_update || return 1
+    wrktr_update || _wrktr_breaker yellow "Fetch failed; continuing with the refs fetched previously"
 
     if ! _wrktr_is_dryrun; then
         if ! git --git-dir="$WRKTR_BASE_DIR" rev-parse --verify "$remote_ref" >/dev/null 2>&1; then
@@ -3047,10 +3177,34 @@ function wrktr_reload() {
         printf 'wrktr: cannot reload — file not found: %s\n' "$src" >&2
         return 1
     fi
+
+    # Do not throw away the working copy if the new file does not even parse.
+    local syntax_shell="bash"
+    [ -n "${ZSH_VERSION:-}" ] && syntax_shell="zsh"
+    if ! "$syntax_shell" -n "$src" 2>/dev/null; then
+        printf 'wrktr: cannot reload — %s has a syntax error; keeping the loaded version\n' "$src" >&2
+        return 1
+    fi
+
+    # Unload discards the session and settings; remember them so a reload is
+    # not a logout.
+    local _saved="" _var _val
+    for _var in WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR WRKTR_REMOTE WRKTR_MAIN_BRANCH \
+                WRKTR_DRY_RUN WRKTR_CONFIG_DIR WRKTR_REPO_DIR_NAME; do
+        if [ -n "$(eval "printf %s \"\${$_var+set}\"")" ]; then
+            _val="$(eval "printf %s \"\$$_var\"")"
+            _saved="$_saved $(printf '%s=%q' "$_var" "$_val")"
+        fi
+    done
+
     # shellcheck disable=SC2119
     wrktr_unload
     # shellcheck disable=SC1090
-    source "$src"
+    source "$src" || return 1
+
+    if [ -n "$_saved" ]; then
+        eval "export$_saved"
+    fi
 }
 
 # =============================================================================
@@ -3174,4 +3328,6 @@ fi
 # WORKTREE HELPERS (wrktr*) — END
 # =============================================================================
 
-_wrktr_breaker green "Worktree functions loaded"
+if [ "${WRKTR_VERBOSE:-0}" = "1" ]; then
+    _wrktr_breaker green "Worktree functions loaded"
+fi

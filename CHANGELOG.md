@@ -12,31 +12,45 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 ## [Unreleased]
 
+### Added
+- Tests: command-level suite in `tests/commands.bats` covering `wrktr_clone`, `add`, `go`, `base`, `status`, `prompt_info`, `update`, `checkout`, `remote_add`, `rebase`, `push`, `remove` (dry-run), `git`, `list`, `current`, `config_show` and dry-run toggling; version-consistency tests (script, CHANGELOG, man page)
+- Tests: `wrktr_init` dry-run and stale-temp-dir cases (run in a pty via `tests/helpers/run_in_pty.py`), and zsh source/unload/reload cases
+
+### Changed
+- `install.sh` no longer edits your shell profile without consent: it asks first when run in a terminal, and leaves the profile untouched (printing the line to add) when it is not. New flags: `--yes` adds the line without asking, `--no-profile` never touches the profile. `update.sh` passes flags through.
+- `uninstall.sh` asks before removing the source line from each profile, and lists the profiles without changing them when not run in a terminal. `--yes` removes the line without asking.
+- Sourcing `worktree-functions.sh` is now silent; set `WRKTR_VERBOSE=1` to print the "Worktree functions loaded" banner. Sourcing also returns 0 instead of the exit status of the last command.
+- `wrktr_git` in dry-run mode now runs read-only git commands (`log`, `status`, `rev-parse`, branch listing, and so on) and only prints commands that could change the repository.
+- `wrktr_adopt` restores every remote of the original clone, not only `origin`, and warns about uncommitted changes and stash entries (which are not carried over) before continuing.
+- `wrktr_push` pushes with `-u` so the branch tracks the remote, and only offers `--force-with-lease` after a rejected push; authentication and network failures are reported without a force-push prompt.
+- `wrktr_reload` keeps the loaded session, dry-run state, `WRKTR_CONFIG_DIR` and `WRKTR_REPO_DIR_NAME`, and refuses to reload a file that does not parse.
+- Documented git requirements corrected: 2.22 or later (`git branch --show-current`), and 2.42 or later for `wrktr_init` (`git worktree add --orphan`)
+- CI: the bash 3.2 and 5.x legs now run bats under an explicitly chosen interpreter and assert its version; zsh is installed on Linux so the zsh tests run there; `actions/checkout` is pinned to a commit SHA
+- Release workflow: fails if the tag does not match `WRKTR_VERSION` and a CHANGELOG entry
+
 ### Fixed
+- `uninstall.sh`: rewrites profiles in place, so a symlinked profile stays a symlink and keeps its permissions, and no longer aborts when the source line was the only line
+- `wrktr_add`, `wrktr_checkout`: a failed fetch now falls back to the refs fetched previously instead of aborting, so they work offline when the base ref already exists locally
+- `wrktr_status`: detached worktrees are compared from their own HEAD rather than the bare repository's
+- `wrktr_clone`: the URL is passed after `--`, so a URL beginning with `-` cannot be read as a git option
+- `wrktr_generate`, `wrktr_init`, `wrktr_adopt`: a leading `~` in a typed path is expanded
+- `wrktr_adopt`: no longer leaks the `input_branch` global
+- `wrktr_init`: if you decline removal of the temporary directory, it now says so and how to remove it, instead of continuing silently
+- Docs: README clone URL, `wrktr_dryrun_status` documented, typo in the 1.0.2 entry
 - `WRKTR_SOURCE_PATH` / `wrktr_reload`: now resolve the sourced file correctly under zsh (`BASH_SOURCE` is bash-only), so `wrktr_reload` works in zsh
 - `wrktr_unload`: no longer depends on `compgen`, which does not exist in zsh; previously functions were left defined after unload
 - `wrktr_init`: dry-run mode no longer fails with "Target already exists"; it now reports the planned steps and changes nothing
 - `wrktr_init`: the stale `.wrktr-init-tmp` check now runs before `git init --bare`, so an aborted run no longer leaves a `.wrktr` directory behind that blocks every retry
-
 - `wrktr_go`, `wrktr_add`, `wrktr_checkout`, `wrktr_remove`, `wrktr_clone`: a branch name that cannot be converted to a directory name (for example one ending in `-`) now fails with `Invalid branch name` instead of resolving to the trunk directory; `wrktr_go` no longer silently changes into the trunk
 - `wrktr_config_edit`: `EDITOR` may now include arguments (for example `code --wait`), and a failing editor is reported instead of printing "Config is valid"
 - `wrktr_use`: clears the previous session's variables before loading, so a config without a `WRKTR_REMOTE` line no longer inherits the old remote; only the five session keys (`WRKTR_NAME`, `WRKTR_BASE_TRUNK`, `WRKTR_BASE_DIR`, `WRKTR_REMOTE`, `WRKTR_MAIN_BRANCH`) are read from a config file
 - `WRKTR_VERSION` corrected to 1.0.2 to match the released CHANGELOG entry; man page header updated to match
 
-### Changed
-- Documented git requirements corrected: 2.22 or later (`git branch --show-current`), and 2.42 or later for `wrktr_init` (`git worktree add --orphan`)
-- CI: the bash 3.2 and 5.x legs now run bats under an explicitly chosen interpreter and assert its version; zsh is installed on Linux so the zsh tests run there; `actions/checkout` is pinned to a commit SHA
-- Release workflow: fails if the tag does not match `WRKTR_VERSION` and a CHANGELOG entry
-
-### Added
-- Tests: command-level suite in `tests/commands.bats` covering `wrktr_clone`, `add`, `go`, `base`, `status`, `prompt_info`, `update`, `checkout`, `remote_add`, `rebase`, `push`, `remove` (dry-run), `git`, `list`, `current`, `config_show` and dry-run toggling; version-consistency tests (script, CHANGELOG, man page)
-- Tests: `wrktr_init` dry-run and stale-temp-dir cases (run in a pty via `tests/helpers/run_in_pty.py`), and zsh source/unload/reload cases
-
 ---
 
 ## [1.0.2] — 2026-06-23
 ### Fixed
-- `_wrktr_sanitize_branch_name`: Fixed branch naming bug. Previously was adding an arbitrary `%` to the end of the branch and riectory name
+- `_wrktr_sanitize_branch_name`: Fixed branch naming bug. Previously was adding an arbitrary `%` to the end of the branch and directory name
 
 
 ## [1.0.1] — 2026-06-05
