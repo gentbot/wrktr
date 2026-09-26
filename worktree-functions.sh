@@ -9,7 +9,8 @@
 # Requirements
 # ------------
 #   - bash 3.2 or later (the macOS default is sufficient)
-#   - git 2.7 or later; git 2.36+ required for wrktr_init
+#   - git 2.22 or later (git branch --show-current); git 2.42+ required for
+#     wrktr_init (git worktree add --orphan)
 #   - rsync (required only by wrktr_init)
 #
 # wrktr is a lightweight shell-based git worktree session manager.
@@ -38,7 +39,7 @@
 #
 # =============================================================================
 
-export WRKTR_VERSION="1.0.1"
+export WRKTR_VERSION="1.0.2"
 export WRKTR_CONFIG_DIR="$HOME/.config/wrktr"
 export WRKTR_DRY_RUN=0
 export WRKTR_REPO_DIR_NAME="${WRKTR_REPO_DIR_NAME:-.wrktr}"
@@ -1049,7 +1050,10 @@ function _wrktr_create_worktree() {
     local target_name="${5:-$branch}"
 
     local safe_branch
-    safe_branch="$(_wrktr_sanitize_branch_name "$target_name")"
+    safe_branch="$(_wrktr_sanitize_branch_name "$target_name")" || {
+        _wrktr_breaker red "Invalid branch name: $target_name"
+        return 1
+    }
 
     local target="$trunk/$safe_branch"
 
@@ -1346,7 +1350,12 @@ function wrktr_config_edit() {
         return 1
     fi
 
-    "${EDITOR:-vi}" "$config"
+    # eval so EDITOR may carry arguments or quoting (e.g. "code --wait"), as git
+    # does; word-splitting an unquoted variable would not work in zsh.
+    if ! eval "${EDITOR:-vi} \"\$config\""; then
+        _wrktr_breaker red "Editor exited with an error; config was not validated"
+        return 1
+    fi
 
     _wrktr_breaker "Validating updated config..."
     if ! wrktr_validate; then
@@ -1536,6 +1545,10 @@ function wrktr_use() {
         printf 'To migrate: wrktr_config_edit — remove "export " from each line.\n\n' >&2
     fi
 
+    # Start from a clean slate so a key missing from this config cannot inherit
+    # a value from a previously loaded session.
+    unset WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR WRKTR_REMOTE WRKTR_MAIN_BRANCH
+
     local _line _key _value
     while IFS= read -r _line; do
         case "$_line" in
@@ -1545,7 +1558,9 @@ function wrktr_use() {
         _key="${_key#export }"
         _value="${_line#*=}"
         case "$_key" in
-            WRKTR_*) export "$_key"="$_value" ;;
+            WRKTR_NAME|WRKTR_BASE_TRUNK|WRKTR_BASE_DIR|WRKTR_REMOTE|WRKTR_MAIN_BRANCH)
+                export "$_key"="$_value"
+                ;;
         esac
     done < "$config"
 
@@ -2071,7 +2086,15 @@ function wrktr_clone() {
         return 0
     fi
 
-    worktree_dir="$abs_destination/$(_wrktr_sanitize_branch_name "$main_branch")"
+    local safe_main
+    safe_main="$(_wrktr_sanitize_branch_name "$main_branch")" || {
+        _wrktr_breaker red "Cannot derive a worktree directory from branch name: $main_branch"
+        _wrktr_breaker "The bare repository is at: $repo_dir"
+        printf '\nCreate the worktree manually:\n'
+        printf '  git --git-dir=%s worktree add <directory> %s\n\n' "$repo_dir" "$main_branch"
+        return 1
+    }
+    worktree_dir="$abs_destination/$safe_main"
 
     _wrktr_breaker "Detected main branch: $main_branch"
     _wrktr_breaker "Creating main worktree: $worktree_dir"
@@ -2417,7 +2440,10 @@ function wrktr_go() {
 
     local branch="$1"
     local safe_branch
-    safe_branch="$(_wrktr_sanitize_branch_name "$branch")"
+    safe_branch="$(_wrktr_sanitize_branch_name "$branch")" || {
+        _wrktr_breaker red "Invalid branch name: $branch"
+        return 1
+    }
     local target="$WRKTR_BASE_TRUNK/$safe_branch"
 
     if _wrktr_is_dryrun; then
@@ -2784,7 +2810,10 @@ function wrktr_checkout() {
     local branch="$1"
     local remote_ref="$WRKTR_REMOTE/$branch"
     local safe_branch
-    safe_branch="$(_wrktr_sanitize_branch_name "$branch")"
+    safe_branch="$(_wrktr_sanitize_branch_name "$branch")" || {
+        _wrktr_breaker red "Invalid branch name: $branch"
+        return 1
+    }
     local target="$WRKTR_BASE_TRUNK/$safe_branch"
 
     wrktr_update || return 1
@@ -2872,7 +2901,10 @@ function wrktr_remove() {
     fi
 
     local safe_branch
-    safe_branch="$(_wrktr_sanitize_branch_name "$branch")"
+    safe_branch="$(_wrktr_sanitize_branch_name "$branch")" || {
+        _wrktr_breaker red "Invalid branch name: $branch"
+        return 1
+    }
 
     local target="$WRKTR_BASE_TRUNK/$safe_branch"
 

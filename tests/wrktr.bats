@@ -562,6 +562,105 @@ _run_init_in_pty() {
     [[ "$output" == *ok ]]
 }
 
+# ---------------------------------------------------------------------------
+# Invalid branch names must not resolve to the trunk directory
+# ---------------------------------------------------------------------------
+
+_make_repo_with_commit() {
+    local trunk="$1"
+    _make_bare_repo "$trunk"
+    local tree commit
+    tree="$(git --git-dir="$trunk/.wrktr" mktree </dev/null)"
+    commit="$(GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+        git --git-dir="$trunk/.wrktr" commit-tree "$tree" -m init)"
+    git --git-dir="$trunk/.wrktr" update-ref refs/heads/main "$commit"
+}
+
+@test "wrktr_go: rejects a branch name that cannot be sanitized" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-go-bad"
+    mkdir -p "$trunk"
+    _make_repo_with_commit "$trunk"
+    run wrktr_go "foo-"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "wrktr_remove: rejects a branch name that cannot be sanitized" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-rm-bad"
+    mkdir -p "$trunk"
+    _make_repo_with_commit "$trunk"
+    run wrktr_remove "foo-"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+@test "wrktr_add: rejects a branch name that cannot be sanitized" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-add-bad"
+    mkdir -p "$trunk"
+    _make_repo_with_commit "$trunk"
+    run wrktr_add "foo-"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_config_edit
+# ---------------------------------------------------------------------------
+
+_make_session_config() {
+    local trunk="$1"
+    printf 'WRKTR_NAME=testproject\nWRKTR_BASE_TRUNK=%s\nWRKTR_BASE_DIR=%s/.wrktr\nWRKTR_REMOTE=\nWRKTR_MAIN_BRANCH=main\n' \
+        "$trunk" "$trunk" > "$WRKTR_CONFIG_DIR/testproject.env"
+}
+
+@test "wrktr_config_edit: passes EDITOR arguments through" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-edit-args"
+    mkdir -p "$trunk"
+    _make_bare_repo "$trunk"
+    _make_session_config "$trunk"
+    local ed="$BATS_TMPDIR/wrktr-trunk-$$-editor.sh"
+    printf '#!/bin/sh\n[ "$1" = "--flag" ] || exit 3\necho "# edited" >> "$2"\n' > "$ed"
+    chmod +x "$ed"
+    EDITOR="$ed --flag" run wrktr_config_edit
+    [ "$status" -eq 0 ]
+    grep -q '^# edited$' "$WRKTR_CONFIG_DIR/testproject.env"
+}
+
+@test "wrktr_config_edit: fails when the editor exits non-zero" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-edit-fail"
+    mkdir -p "$trunk"
+    _make_bare_repo "$trunk"
+    _make_session_config "$trunk"
+    EDITOR=false run wrktr_config_edit
+    [ "$status" -eq 1 ]
+    [[ ! "$output" =~ "Config is valid" ]]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_use: session isolation
+# ---------------------------------------------------------------------------
+
+@test "wrktr_use: does not inherit variables from a previous session" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-use-stale"
+    mkdir -p "$trunk"
+    _make_bare_repo "$trunk"
+    # Config deliberately has no WRKTR_REMOTE line
+    printf 'WRKTR_NAME=testproject\nWRKTR_BASE_TRUNK=%s\nWRKTR_BASE_DIR=%s/.wrktr\nWRKTR_MAIN_BRANCH=main\n' \
+        "$trunk" "$trunk" > "$WRKTR_CONFIG_DIR/testproject.env"
+    run bash -c "source \"$WRKTR_FUNCTIONS\" >/dev/null; export WRKTR_CONFIG_DIR=\"$WRKTR_CONFIG_DIR\" WRKTR_REMOTE=stale; wrktr_use testproject >/dev/null 2>&1; echo \"rc=\$? remote=[\${WRKTR_REMOTE}]\""
+    [[ "$output" == *"rc=0 remote=[]" ]]
+}
+
+@test "wrktr_use: ignores WRKTR_ keys that are not session settings" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-use-allow"
+    mkdir -p "$trunk"
+    _make_bare_repo "$trunk"
+    printf 'WRKTR_NAME=testproject\nWRKTR_BASE_TRUNK=%s\nWRKTR_BASE_DIR=%s/.wrktr\nWRKTR_REMOTE=\nWRKTR_MAIN_BRANCH=main\nWRKTR_SOURCE_PATH=/evil\n' \
+        "$trunk" "$trunk" > "$WRKTR_CONFIG_DIR/testproject.env"
+    run bash -c "source \"$WRKTR_FUNCTIONS\" >/dev/null; export WRKTR_CONFIG_DIR=\"$WRKTR_CONFIG_DIR\"; wrktr_use testproject >/dev/null 2>&1; echo \"\$WRKTR_SOURCE_PATH\""
+    [[ "$output" != "/evil" ]]
+}
+
 # ===========================================================================
 # Version
 # ===========================================================================
@@ -572,4 +671,15 @@ _run_init_in_pty() {
 
 @test "WRKTR_VERSION matches semver format" {
     [[ "$WRKTR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+@test "WRKTR_VERSION matches the latest released CHANGELOG entry" {
+    local latest
+    latest="$(grep -m1 -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$BATS_TEST_DIRNAME/../CHANGELOG.md" \
+        | sed -E 's/^## \[([^]]+)\].*/\1/')"
+    [ "$WRKTR_VERSION" = "$latest" ]
+}
+
+@test "man page version matches WRKTR_VERSION" {
+    grep -q "wrktr $WRKTR_VERSION" "$BATS_TEST_DIRNAME/../docs/wrktr.1"
 }

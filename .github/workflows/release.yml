@@ -13,11 +13,24 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches the script and CHANGELOG
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          script_version="$(sed -n 's/^export WRKTR_VERSION="\(.*\)"$/\1/p' worktree-functions.sh)"
+          if [ "$script_version" != "$version" ]; then
+            echo "Tag v$version does not match WRKTR_VERSION ($script_version) in worktree-functions.sh" >&2
+            exit 1
+          fi
+          if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no entry for $version" >&2
+            exit 1
+          fi
 
       - name: Extract changelog entry
         run: |

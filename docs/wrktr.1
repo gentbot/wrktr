@@ -1,6 +1,6 @@
 .\" wrktr.1 — manual page for the wrktr shell worktree manager
 .\" Install: cp wrktr.1 ~/.local/share/man/man1/ && man -W ~/.local/share/man/man1
-.TH WRKTR 1 "2024" "wrktr 1.0.0" "User Commands"
+.TH WRKTR 1 "June 2026" "wrktr 1.0.2" "User Commands"
 .
 .SH NAME
 wrktr \- branch-as-directory git worktree session manager
@@ -66,12 +66,13 @@ for inline documentation:
 .B bash 3.2 or later
 The macOS system bash (3.2.57) is sufficient. bash 4+ is not required.
 .TP
-.B git 2.7 or later
-.B git worktree list \-\-porcelain
-is required by
-.BR wrktr_status .
-git 2.36 or later is required by
-.BR wrktr_init .
+.B git 2.22 or later
+.B git branch \-\-show\-current
+is used by several commands.
+git 2.42 or later is required by
+.BR wrktr_init ,
+which uses
+.BR "git worktree add \-\-orphan" .
 .TP
 .B rsync
 Required only by

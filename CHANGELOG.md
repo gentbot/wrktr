@@ -18,7 +18,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 - `wrktr_init`: dry-run mode no longer fails with "Target already exists"; it now reports the planned steps and changes nothing
 - `wrktr_init`: the stale `.wrktr-init-tmp` check now runs before `git init --bare`, so an aborted run no longer leaves a `.wrktr` directory behind that blocks every retry
 
+- `wrktr_go`, `wrktr_add`, `wrktr_checkout`, `wrktr_remove`, `wrktr_clone`: a branch name that cannot be converted to a directory name (for example one ending in `-`) now fails with `Invalid branch name` instead of resolving to the trunk directory; `wrktr_go` no longer silently changes into the trunk
+- `wrktr_config_edit`: `EDITOR` may now include arguments (for example `code --wait`), and a failing editor is reported instead of printing "Config is valid"
+- `wrktr_use`: clears the previous session's variables before loading, so a config without a `WRKTR_REMOTE` line no longer inherits the old remote; only the five session keys (`WRKTR_NAME`, `WRKTR_BASE_TRUNK`, `WRKTR_BASE_DIR`, `WRKTR_REMOTE`, `WRKTR_MAIN_BRANCH`) are read from a config file
+- `WRKTR_VERSION` corrected to 1.0.2 to match the released CHANGELOG entry; man page header updated to match
+
+### Changed
+- Documented git requirements corrected: 2.22 or later (`git branch --show-current`), and 2.42 or later for `wrktr_init` (`git worktree add --orphan`)
+- CI: the bash 3.2 and 5.x legs now run bats under an explicitly chosen interpreter and assert its version; zsh is installed on Linux so the zsh tests run there; `actions/checkout` is pinned to a commit SHA
+- Release workflow: fails if the tag does not match `WRKTR_VERSION` and a CHANGELOG entry
+
 ### Added
+- Tests: command-level suite in `tests/commands.bats` covering `wrktr_clone`, `add`, `go`, `base`, `status`, `prompt_info`, `update`, `checkout`, `remote_add`, `rebase`, `push`, `remove` (dry-run), `git`, `list`, `current`, `config_show` and dry-run toggling; version-consistency tests (script, CHANGELOG, man page)
 - Tests: `wrktr_init` dry-run and stale-temp-dir cases (run in a pty via `tests/helpers/run_in_pty.py`), and zsh source/unload/reload cases
 
 ---
