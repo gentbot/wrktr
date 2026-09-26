@@ -42,8 +42,11 @@ export WRKTR_VERSION="1.0.1"
 export WRKTR_CONFIG_DIR="$HOME/.config/wrktr"
 export WRKTR_DRY_RUN=0
 export WRKTR_REPO_DIR_NAME="${WRKTR_REPO_DIR_NAME:-.wrktr}"
-WRKTR_SOURCE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
+# BASH_SOURCE is bash-only; when sourced, zsh sets $0 to the sourced file.
+_wrktr_src="${BASH_SOURCE[0]:-$0}"
+WRKTR_SOURCE_PATH="$(cd "$(dirname "$_wrktr_src")" 2>/dev/null && pwd -P)/$(basename "$_wrktr_src")"
 export WRKTR_SOURCE_PATH
+unset _wrktr_src
 
 if ! command -v git >/dev/null 2>&1; then
     printf 'wrktr: required dependency not found: git\n' >&2
@@ -1821,6 +1824,14 @@ function wrktr_init() {
         return 1
     fi
 
+    local tmp_dir="$abs_root/.wrktr-init-tmp"
+
+    if [ -e "$tmp_dir" ]; then
+        _wrktr_breaker red "Temporary initialization directory already exists:"
+        _wrktr_breaker red "$tmp_dir"
+        return 1
+    fi
+
     _wrktr_breaker "Initializing bare repository"
 
     if ! _wrktr_run git init --bare "$repo_dir"; then
@@ -1828,14 +1839,7 @@ function wrktr_init() {
         return 1
     fi
 
-    local tmp_dir="$abs_root/.wrktr-init-tmp"
     local init_success=0
-
-    if [ -e "$tmp_dir" ]; then
-        _wrktr_breaker red "Temporary initialization directory already exists:"
-        _wrktr_breaker red "$tmp_dir"
-        return 1
-    fi
 
     # shellcheck disable=SC2317,SC2329
     function _wrktr_init_cleanup() {
@@ -1870,7 +1874,12 @@ function wrktr_init() {
         return 1
     fi
 
-    if ! _wrktr_create_worktree \
+    if _wrktr_is_dryrun; then
+        # The worktree directory was not actually moved aside, so the real
+        # creation step would (correctly) refuse to run. Validate and report.
+        _wrktr_validate_branch_name "$main_branch" || return 1
+        _wrktr_breaker "[DRY RUN] Would create orphan worktree: $worktree_dir ($main_branch)"
+    elif ! _wrktr_create_worktree \
         "$repo_dir" \
         "$abs_root" \
         "$main_branch" \
@@ -2955,10 +2964,16 @@ function wrktr_remove() {
 # shellcheck disable=SC2120
 function wrktr_unload() {
     [ "$1" = "--help" ] && { wrktr_help unload; return 0; }
-    local f
+    local f fn_list
+    if [ -n "${ZSH_VERSION:-}" ]; then
+        # compgen is not available in zsh without bashcompinit
+        fn_list="$(typeset +f)"
+    else
+        fn_list="$(compgen -A function)"
+    fi
     while IFS= read -r f; do
         unset -f "$f"
-    done < <(compgen -A function | grep -E '^_?wrktr')
+    done < <(printf '%s\n' "$fn_list" | grep -E '^_?wrktr')
 
     unset WRKTR_VERSION
     unset WRKTR_NAME

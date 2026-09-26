@@ -502,6 +502,66 @@ EOF
     [[ "$output" =~ "requires an interactive terminal" ]]
 }
 
+# ---------------------------------------------------------------------------
+# wrktr_init (needs a pty; skipped when python3 is unavailable)
+# ---------------------------------------------------------------------------
+
+_run_init_in_pty() {
+    # $1 = project root, $2 = "dry" to enable dry-run first
+    local pre=""
+    [ "$2" = "dry" ] && pre="wrktr_dryrun_enable >/dev/null;"
+    run python3 "$BATS_TEST_DIRNAME/helpers/run_in_pty.py" \
+        "source \"$WRKTR_FUNCTIONS\" >/dev/null; $pre wrktr_init" \
+        "$1"$'\n\n\n'
+}
+
+@test "wrktr_init: dry-run succeeds and changes nothing" {
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    local root="$BATS_TMPDIR/wrktr-trunk-$$-init-dry/x"
+    mkdir -p "$root/main"
+    echo f > "$root/main/f"
+    _run_init_in_pty "$root" dry
+    [ "$status" -eq 0 ]
+    [ ! -e "$root/.wrktr" ]
+    [ -f "$root/main/f" ]
+}
+
+@test "wrktr_init: stale temp dir aborts before creating the bare repo" {
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    local root="$BATS_TMPDIR/wrktr-trunk-$$-init-stale/x"
+    mkdir -p "$root/main" "$root/.wrktr-init-tmp"
+    echo f > "$root/main/f"
+    _run_init_in_pty "$root"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "already exists" ]]
+    [ ! -e "$root/.wrktr" ]
+}
+
+# ===========================================================================
+# Sourcing under zsh
+# ===========================================================================
+
+@test "WRKTR_SOURCE_PATH resolves to the sourced file under zsh" {
+    command -v zsh >/dev/null 2>&1 || skip "zsh not available"
+    run zsh -c "cd / && source \"$WRKTR_FUNCTIONS\" >/dev/null; printf '%s' \"\$WRKTR_SOURCE_PATH\""
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)/worktree-functions.sh" ]
+}
+
+@test "wrktr_unload removes wrktr functions under zsh without errors" {
+    command -v zsh >/dev/null 2>&1 || skip "zsh not available"
+    run zsh -c "source \"$WRKTR_FUNCTIONS\" >/dev/null; wrktr_unload 2>&1; if type wrktr_use >/dev/null 2>&1; then printf still-defined; else printf gone; fi"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "gone" ]]
+}
+
+@test "wrktr_reload works under zsh" {
+    command -v zsh >/dev/null 2>&1 || skip "zsh not available"
+    run zsh -c "source \"$WRKTR_FUNCTIONS\" >/dev/null; wrktr_reload >/dev/null; type wrktr_use >/dev/null && printf ok"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *ok ]]
+}
+
 # ===========================================================================
 # Version
 # ===========================================================================

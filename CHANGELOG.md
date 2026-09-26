@@ -12,6 +12,15 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 ## [Unreleased]
 
+### Fixed
+- `WRKTR_SOURCE_PATH` / `wrktr_reload`: now resolve the sourced file correctly under zsh (`BASH_SOURCE` is bash-only), so `wrktr_reload` works in zsh
+- `wrktr_unload`: no longer depends on `compgen`, which does not exist in zsh; previously functions were left defined after unload
+- `wrktr_init`: dry-run mode no longer fails with "Target already exists"; it now reports the planned steps and changes nothing
+- `wrktr_init`: the stale `.wrktr-init-tmp` check now runs before `git init --bare`, so an aborted run no longer leaves a `.wrktr` directory behind that blocks every retry
+
+### Added
+- Tests: `wrktr_init` dry-run and stale-temp-dir cases (run in a pty via `tests/helpers/run_in_pty.py`), and zsh source/unload/reload cases
+
 ---
 
 ## [1.0.2] — 2026-06-23
