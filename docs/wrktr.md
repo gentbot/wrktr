@@ -45,7 +45,7 @@ Because the bare database has no working tree, git cannot auto-detect it by walk
 ## Requirements
 
 - bash 3.2 or later (the macOS default is sufficient; bash 4+ is not required)
-- git 2.7 or later (`git worktree list --porcelain` required by `wrktr_status`); git 2.36 or later required for `wrktr_init`
+- git 2.22 or later (`git branch --show-current`); git 2.42 or later required for `wrktr_init` (`git worktree add --orphan`)
 - rsync (required only by `wrktr_init`)
 
 ---

@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -37,7 +37,7 @@ jobs:
     name: Lint (shellcheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
@@ -70,24 +70,36 @@ jobs:
             bash: "5.x"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Install bats-core (Ubuntu)
+      - name: Install bats-core and zsh (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
           sudo /tmp/bats-core/install.sh /usr/local
+          sudo apt-get install -y zsh
 
       - name: Install bats-core and bash (macOS)
         if: runner.os == 'macOS'
         run: brew install bats-core bash
 
-      - name: Run tests (system bash)
-        if: matrix.bash != '5.x'
-        run: bats --tap tests/
+      # Each leg pins the interpreter explicitly and asserts its version, so the
+      # "3.2" leg cannot silently run under a Homebrew bash that is earlier on PATH.
+      - name: Run tests (Linux, system bash)
+        if: runner.os == 'Linux'
+        run: |
+          echo "bash $BASH_VERSION, zsh $(zsh --version)"
+          bats --tap tests/
 
-      - name: Run tests (Homebrew bash 5.x)
+      - name: Run tests (macOS, bash 3.2)
+        if: matrix.bash == '3.2'
+        run: |
+          /bin/bash -c 'echo "bash $BASH_VERSION"; case "$BASH_VERSION" in 3.2.*) ;; *) echo "expected bash 3.2" >&2; exit 1;; esac'
+          /bin/bash "$(which bats)" --tap tests/
+
+      - name: Run tests (macOS, Homebrew bash 5.x)
         if: matrix.bash == '5.x'
         run: |
           BASH_BIN="$(brew --prefix)/bin/bash"
+          "$BASH_BIN" -c 'echo "bash $BASH_VERSION"; case "$BASH_VERSION" in 5.*) ;; *) echo "expected bash 5.x" >&2; exit 1;; esac'
           "$BASH_BIN" "$(which bats)" --tap tests/
