@@ -434,3 +434,265 @@ EOF
     [[ "$output" =~ "ENABLED" ]]
     [[ "$output" =~ "DISABLED" ]]
 }
+
+# ===========================================================================
+# Low-priority hardening
+# ===========================================================================
+
+# Run a bash command inside a pty and type $2 at it.
+_pty() {
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    run python3 "$BATS_TEST_DIRNAME/helpers/run_in_pty.py" \
+        "source \"$WRKTR_FUNCTIONS\" >/dev/null; $1" "$2"
+}
+
+# Point the loaded session's remote at a path that does not exist (offline).
+_break_remote() {
+    git --git-dir="$TRUNK/.wrktr" config remote.origin.url "$T/does-not-exist"
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_push: failure handling and upstream
+# ---------------------------------------------------------------------------
+
+@test "wrktr_push: sets the upstream branch on push" {
+    _start_session
+    _script <<'EOS'
+wrktr_add feature/u >/dev/null 2>&1 || exit 10
+echo u > u && git add u && git commit -qm u || exit 11
+wrktr_push >/dev/null 2>&1 || exit 12
+git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'
+EOS
+    [ "$status" -eq 0 ]
+    [ "$output" = "origin/feature/u" ]
+}
+
+@test "wrktr_push: a non-rejection failure does not offer a force push" {
+    _start_session
+    _script <<'EOS'
+wrktr_add feature/bad >/dev/null 2>&1 || exit 10
+echo b > b && git add b && git commit -qm b || exit 11
+git --git-dir="$WRKTR_BASE_DIR" config remote.origin.url "$T/does-not-exist"
+wrktr_push
+EOS
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Push failed" ]]
+    [[ ! "$output" =~ "rejected" ]]
+    [[ ! "$output" =~ "force-with-lease" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Offline: add/checkout fall back to already-fetched refs
+# ---------------------------------------------------------------------------
+
+@test "wrktr_add: falls back to local refs when the fetch fails" {
+    _start_session
+    _break_remote
+    _script <<'EOS'
+wrktr_add feature/off >/dev/null 2>&1 || exit 10
+pwd -P
+EOS
+    [ "$status" -eq 0 ]
+    [ -d "$TRUNK/feature%2Foff" ]
+}
+
+@test "wrktr_checkout: falls back to fetched refs when the fetch fails" {
+    _start_session
+    git -C "$ORIGIN" branch feature/co main
+    wrktr_update >/dev/null 2>&1
+    _break_remote
+    _script <<'EOS'
+wrktr_checkout feature/co >/dev/null 2>&1 || exit 10
+EOS
+    [ "$status" -eq 0 ]
+    [ -d "$TRUNK/feature%2Fco" ]
+}
+
+@test "wrktr_add: still fails offline when the base ref was never fetched" {
+    _start_session
+    _break_remote
+    run wrktr_add feature/x never-fetched
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Base ref does not exist" ]]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_status: detached worktrees
+# ---------------------------------------------------------------------------
+
+@test "wrktr_status: detached worktree is compared from its own HEAD" {
+    _start_session
+    git -C "$ORIGIN" commit --allow-empty -qm c2
+    git -C "$ORIGIN" commit --allow-empty -qm c3
+    wrktr_update >/dev/null 2>&1
+    local c2
+    c2="$(git -C "$ORIGIN" rev-parse HEAD~1)"
+    git --git-dir="$TRUNK/.wrktr" worktree add --detach "$TRUNK/det" "$c2" >/dev/null 2>&1
+    run wrktr_status
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "branch: detached  (-1 behind origin/main)" ]]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_clone: URLs that look like options
+# ---------------------------------------------------------------------------
+
+@test "wrktr_clone: a URL starting with '-' is treated as a repository, not an option" {
+    run wrktr_clone "--upload-pack=touch $T/pwned" "$TRUNK"
+    [ "$status" -eq 1 ]
+    [ ! -e "$T/pwned" ]
+    [ ! -e "$TRUNK" ]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_generate: tilde expansion
+# ---------------------------------------------------------------------------
+
+@test "wrktr_generate: expands ~ in the trunk path" {
+    _start_session
+    printf '~/proj/app\n\n\n' > "$T/answers"
+    HOME="$T" run wrktr_generate second < "$T/answers"
+    [ "$status" -eq 0 ]
+    grep -qx "WRKTR_BASE_TRUNK=$TRUNK" "$WRKTR_CONFIG_DIR/second.env"
+}
+
+# ---------------------------------------------------------------------------
+# Startup output
+# ---------------------------------------------------------------------------
+
+@test "sourcing is silent by default and returns success" {
+    run bash -c "source \"$WRKTR_FUNCTIONS\"; echo rc=\$?"
+    [ "$output" = "rc=0" ]
+}
+
+@test "sourcing prints the banner when WRKTR_VERBOSE=1" {
+    WRKTR_VERBOSE=1 run bash -c "source \"$WRKTR_FUNCTIONS\""
+    [[ "$output" =~ "Worktree functions loaded" ]]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_git dry-run: read-only commands still run
+# ---------------------------------------------------------------------------
+
+@test "wrktr_git: read-only commands run even in dry-run mode" {
+    _start_session
+    WRKTR_DRY_RUN=1 run wrktr_git rev-parse --is-bare-repository
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "wrktr_git: mutating commands are still only printed in dry-run mode" {
+    _start_session
+    WRKTR_DRY_RUN=1 run wrktr_git branch should-not-exist main
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "DRY RUN" ]]
+    ! git --git-dir="$TRUNK/.wrktr" show-ref --verify --quiet refs/heads/should-not-exist
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_reload
+# ---------------------------------------------------------------------------
+
+@test "wrktr_reload: keeps the loaded session, dry-run state and config dir" {
+    _start_session
+    _script <<'EOS'
+export WRKTR_CONFIG_DIR="$T/config"
+wrktr_use app >/dev/null 2>&1 || exit 10
+wrktr_dryrun_enable >/dev/null
+wrktr_reload >/dev/null 2>&1 || exit 11
+printf '%s|%s|%s|%s\n' "$WRKTR_NAME" "$WRKTR_DRY_RUN" "$WRKTR_CONFIG_DIR" "$WRKTR_MAIN_BRANCH"
+EOS
+    [ "$status" -eq 0 ]
+    [ "$output" = "app|1|$T/config|main" ]
+}
+
+@test "wrktr_reload: a file with a syntax error leaves the current functions in place" {
+    cp "$WRKTR_FUNCTIONS" "$T/wf.sh"
+    _script <<EOS
+source "$T/wf.sh" >/dev/null
+printf 'if then fi\n' >> "$T/wf.sh"
+wrktr_reload >/dev/null 2>&1
+rc=\$?
+type wrktr_use >/dev/null 2>&1 && echo "still-defined rc=\$rc"
+EOS
+    [ "$status" -eq 0 ]
+    [ "$output" = "still-defined rc=1" ]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_status guard for a stray flag: docs stay in sync with the code
+# ---------------------------------------------------------------------------
+
+@test "docs: every public function is documented in docs/wrktr.md" {
+    local missing="" fn
+    for fn in $(grep -oE '^function wrktr_[a-z_]+' "$WRKTR_FUNCTIONS" | sed 's/function //'); do
+        grep -q "$fn" "$BATS_TEST_DIRNAME/../docs/wrktr.md" || missing="$missing $fn"
+    done
+    [ -z "$missing" ] || { echo "undocumented:$missing"; return 1; }
+}
+
+@test "docs: README has no placeholder clone URL" {
+    ! grep -q 'your-username' "$BATS_TEST_DIRNAME/../README.md"
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_adopt (pty)
+# ---------------------------------------------------------------------------
+
+_make_existing_clone() {
+    git clone -q "$ORIGIN" "$T/existing"
+}
+
+@test "wrktr_adopt: restores every remote of the original clone" {
+    _make_existing_clone
+    git -C "$T/existing" remote add upstream "$ORIGIN"
+    _pty "wrktr_adopt \"$T/existing\"" $'\n'"$T/adopted"$'\n\n'
+    [ "$status" -eq 0 ]
+    git --git-dir="$T/adopted/.wrktr" remote | grep -qx origin
+    git --git-dir="$T/adopted/.wrktr" remote | grep -qx upstream
+    [ "$(git --git-dir="$T/adopted/.wrktr" config --get remote.upstream.fetch)" = "+refs/heads/*:refs/remotes/upstream/*" ]
+}
+
+@test "wrktr_adopt: warns about uncommitted changes and aborts on 'n'" {
+    _make_existing_clone
+    echo dirty >> "$T/existing/a"
+    _pty "wrktr_adopt \"$T/existing\"" $'\n'"$T/adopted"$'\n\nn\n'
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "uncommitted" ]]
+    [ ! -e "$T/adopted" ]
+}
+
+@test "wrktr_adopt: proceeds after the warning when the answer is 'y'" {
+    _make_existing_clone
+    echo dirty >> "$T/existing/a"
+    _pty "wrktr_adopt \"$T/existing\"" $'\n'"$T/adopted"$'\n\ny\n'
+    [ "$status" -eq 0 ]
+    [ -d "$T/adopted/.wrktr" ]
+}
+
+@test "wrktr_adopt: does not leak a global variable" {
+    _make_existing_clone
+    _pty "wrktr_adopt \"$T/existing\" >/dev/null; echo LEAK=[\${input_branch-unset}]" $'\n'"$T/adopted"$'\n\n'
+    [[ "$output" =~ "LEAK=[unset]" ]]
+}
+
+# ---------------------------------------------------------------------------
+# wrktr_init (pty): declined cleanup and RETURN trap
+# ---------------------------------------------------------------------------
+
+@test "wrktr_init: declining removal of the temp dir warns and leaves it in place" {
+    mkdir -p "$T/x/main"
+    echo f > "$T/x/main/f"
+    _pty "wrktr_init" "$T/x"$'\n\n\nn\n'
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "was not removed" ]]
+    [ -d "$T/x/.wrktr-init-tmp" ]
+    [ -f "$T/x/main/f" ]
+}
+
+@test "wrktr_init: restores a RETURN trap the caller had set" {
+    mkdir -p "$T/x/main"
+    echo f > "$T/x/main/f"
+    _pty "trap 'true' RETURN; wrktr_init >/dev/null; trap -p RETURN" "$T/x"$'\n\n\ny\n'
+    [[ "$output" =~ "trap -- 'true' RETURN" ]]
+}

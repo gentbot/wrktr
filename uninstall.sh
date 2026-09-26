@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
-# uninstall.sh — removes the wrktr install and source line from shell profiles.
+# uninstall.sh — removes the wrktr install and, with your consent, the source
+# line from shell profiles.
+#
+# Usage: uninstall.sh [--yes]
+#   --yes   remove the source line from profiles without asking
+#
+# Without --yes, uninstall.sh asks per profile when run in a terminal, and
+# leaves profiles untouched (listing them) when it is not.
 
 set -e
+
+ASSUME_YES=0
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y) ASSUME_YES=1 ;;
+        -h|--help)
+            printf 'Usage: uninstall.sh [--yes]\n'
+            exit 0
+            ;;
+        *)
+            printf 'Unknown option: %s\nUsage: uninstall.sh [--yes]\n' "$arg" >&2
+            exit 2
+            ;;
+    esac
+done
 
 INSTALL_DIR="$HOME/.local/lib/wrktr"
 INSTALL_FILE="$INSTALL_DIR/worktree-functions.sh"
@@ -52,10 +74,32 @@ _remove_source_line() {
         return
     fi
 
+    if [ "$ASSUME_YES" -ne 1 ]; then
+        if [ -t 0 ]; then
+            printf 'Remove the wrktr source line from %s? [y/N]: ' "$profile"
+            read -r answer
+            case "$answer" in
+                y|Y|yes|YES) ;;
+                *)
+                    printf 'Left unchanged: %s\n' "$profile"
+                    return
+                    ;;
+            esac
+        else
+            printf 'Profile not modified: %s\n' "$profile"
+            printf '  Remove the line containing "wrktr/worktree-functions.sh" yourself, or re-run with --yes.\n'
+            return
+        fi
+    fi
+
+    # Rewrite in place (cat >) rather than mv, so a symlinked profile stays a
+    # symlink and keeps its permissions. grep -v exits 1 when no lines remain,
+    # which is fine here.
     local tmp
     tmp="$(mktemp)"
-    grep -vF "wrktr/worktree-functions.sh" "$profile" > "$tmp"
-    mv "$tmp" "$profile"
+    grep -vF "wrktr/worktree-functions.sh" "$profile" > "$tmp" || true
+    cat "$tmp" > "$profile"
+    rm -f "$tmp"
     printf 'Removed source line from: %s\n' "$profile"
 }
 
