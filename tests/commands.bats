@@ -696,3 +696,65 @@ _make_existing_clone() {
     _pty "trap 'true' RETURN; wrktr_init >/dev/null; trap -p RETURN" "$T/x"$'\n\n\ny\n'
     [[ "$output" =~ "trap -- 'true' RETURN" ]]
 }
+
+# ---------------------------------------------------------------------------
+# wrktr_remove: the real path and its prompts (pty)
+# ---------------------------------------------------------------------------
+
+# Create a worktree (and optionally an unmerged commit on it) without leaving
+# the test shell's directory.
+_make_worktree() {
+    ( wrktr_add "$1" >/dev/null 2>&1 )
+    [ -d "$TRUNK/$(_wrktr_sanitize_branch_name "$1")" ]
+}
+
+@test "wrktr_remove: removes the worktree and keeps the branch on 'n'" {
+    _start_session
+    _make_worktree feature/r1
+    _pty "cd \"$TRUNK\" && wrktr_remove feature/r1" $'n\n'
+    [ "$status" -eq 0 ]
+    [ ! -d "$TRUNK/feature%2Fr1" ]
+    [[ "$output" =~ "Branch kept" ]]
+    git --git-dir="$TRUNK/.wrktr" show-ref --verify --quiet refs/heads/feature/r1
+}
+
+@test "wrktr_remove: deletes a merged branch on 'y'" {
+    _start_session
+    _make_worktree feature/r2
+    _pty "cd \"$TRUNK\" && wrktr_remove feature/r2" $'y\n'
+    [ "$status" -eq 0 ]
+    [ ! -d "$TRUNK/feature%2Fr2" ]
+    [[ "$output" =~ "Branch feature/r2 deleted" ]]
+    ! git --git-dir="$TRUNK/.wrktr" show-ref --verify --quiet refs/heads/feature/r2
+}
+
+@test "wrktr_remove: keeps an unmerged branch when the force-delete is declined" {
+    _start_session
+    _make_worktree feature/r3
+    git -C "$TRUNK/feature%2Fr3" commit --allow-empty -qm "unmerged work"
+    _pty "cd \"$TRUNK\" && wrktr_remove feature/r3" $'y\nn\n'
+    [ "$status" -eq 0 ]
+    [ ! -d "$TRUNK/feature%2Fr3" ]
+    [[ "$output" =~ "unmerged changes" ]]
+    git --git-dir="$TRUNK/.wrktr" show-ref --verify --quiet refs/heads/feature/r3
+}
+
+@test "wrktr_remove: force-deletes an unmerged branch only after a second 'y'" {
+    _start_session
+    _make_worktree feature/r4
+    git -C "$TRUNK/feature%2Fr4" commit --allow-empty -qm "unmerged work"
+    _pty "cd \"$TRUNK\" && wrktr_remove feature/r4" $'y\ny\n'
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "force-deleted" ]]
+    ! git --git-dir="$TRUNK/.wrktr" show-ref --verify --quiet refs/heads/feature/r4
+}
+
+@test "wrktr_remove: refuses a worktree with uncommitted files and leaves it in place" {
+    _start_session
+    _make_worktree feature/r5
+    echo dirty > "$TRUNK/feature%2Fr5/untracked"
+    _pty "cd \"$TRUNK\" && wrktr_remove feature/r5" $'n\n'
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Worktree remove failed" ]]
+    [ -f "$TRUNK/feature%2Fr5/untracked" ]
+}

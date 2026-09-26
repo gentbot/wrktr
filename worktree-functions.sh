@@ -318,6 +318,39 @@ function _wrktr_expand_tilde() {
 }
 
 # -----------------------------------------------------------------------------
+# _wrktr_snapshot_vars
+# -----------------------------------------------------------------------------
+# What it does:
+#   Captures the current values of the named variables as a string of
+#   NAME=value assignments (shell-quoted) that can be restored later with:
+#
+#     eval "export$snapshot"
+#
+#   Only variables that are set are captured, so an empty value is preserved
+#   and an unset variable stays unset. Works in bash and zsh.
+#
+# Arguments:
+#   $@ — variable names
+#
+# Output:
+#   Echoes " NAME=value NAME2=value2" (leading space), or nothing.
+#
+# Examples:
+#   saved="$(_wrktr_snapshot_vars WRKTR_NAME WRKTR_REMOTE)"
+#   eval "export$saved"
+# -----------------------------------------------------------------------------
+function _wrktr_snapshot_vars() {
+    local _var _val _out=""
+    for _var in "$@"; do
+        if [ -n "$(eval "printf %s \"\${$_var+set}\"")" ]; then
+            _val="$(eval "printf %s \"\$$_var\"")"
+            _out="$_out $(printf '%s=%q' "$_var" "$_val")"
+        fi
+    done
+    printf '%s' "$_out"
+}
+
+# -----------------------------------------------------------------------------
 # _wrktr_git_is_readonly
 # -----------------------------------------------------------------------------
 # What it does:
@@ -1621,7 +1654,11 @@ function wrktr_use() {
     fi
 
     # Start from a clean slate so a key missing from this config cannot inherit
-    # a value from a previously loaded session.
+    # a value from a previously loaded session. Remember the previous session so
+    # a failed load can put it back.
+    local previous_session
+    previous_session="$(_wrktr_snapshot_vars WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR \
+        WRKTR_REMOTE WRKTR_MAIN_BRANCH)"
     unset WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR WRKTR_REMOTE WRKTR_MAIN_BRANCH
 
     local _line _key _value
@@ -1652,6 +1689,11 @@ function wrktr_use() {
         unset WRKTR_BASE_DIR
         unset WRKTR_REMOTE
         unset WRKTR_MAIN_BRANCH
+
+        if [ -n "$previous_session" ]; then
+            eval "export$previous_session"
+            printf 'The previously loaded session is still active: %s\n\n' "$WRKTR_NAME"
+        fi
 
         return 1
     fi
@@ -1924,6 +1966,9 @@ function wrktr_init() {
         return 1
     fi
 
+    # Reject a bad branch name before anything is created on disk.
+    _wrktr_validate_branch_name "$main_branch" || return 1
+
     _wrktr_breaker "Initializing bare repository"
 
     if ! _wrktr_run git init --bare "$repo_dir"; then
@@ -1958,6 +2003,14 @@ function wrktr_init() {
     }
 
     trap _wrktr_init_cleanup RETURN
+
+    # git init --bare leaves HEAD on the default branch name (often master). Point
+    # it at the branch we are about to create, or HEAD stays unborn and plain
+    # git commands in the bare repo fail.
+    if ! _wrktr_run git --git-dir="$repo_dir" symbolic-ref HEAD "refs/heads/$main_branch"; then
+        _wrktr_breaker red "Failed to point HEAD at $main_branch"
+        return 1
+    fi
 
     _wrktr_breaker "Temporarily relocating existing worktree contents"
 
@@ -3188,14 +3241,9 @@ function wrktr_reload() {
 
     # Unload discards the session and settings; remember them so a reload is
     # not a logout.
-    local _saved="" _var _val
-    for _var in WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR WRKTR_REMOTE WRKTR_MAIN_BRANCH \
-                WRKTR_DRY_RUN WRKTR_CONFIG_DIR WRKTR_REPO_DIR_NAME; do
-        if [ -n "$(eval "printf %s \"\${$_var+set}\"")" ]; then
-            _val="$(eval "printf %s \"\$$_var\"")"
-            _saved="$_saved $(printf '%s=%q' "$_var" "$_val")"
-        fi
-    done
+    local _saved
+    _saved="$(_wrktr_snapshot_vars WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR WRKTR_REMOTE \
+        WRKTR_MAIN_BRANCH WRKTR_DRY_RUN WRKTR_CONFIG_DIR WRKTR_REPO_DIR_NAME)"
 
     # shellcheck disable=SC2119
     wrktr_unload
