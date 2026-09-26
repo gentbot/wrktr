@@ -427,7 +427,7 @@ Loads a project config into the current shell.
 wrktr_use omi
 ```
 
-Sources `~/.config/wrktr/omi.env`. If validation fails, all variables are unset so the shell is not left in a partial state.
+Parses `~/.config/wrktr/omi.env` (only the five session keys are read; the file is never executed) and validates the result. If validation fails, the previously loaded session, if any, stays active.
 
 ---
 
@@ -532,7 +532,7 @@ PS1='$(wrktr_prompt_info) \$ '
 Creates a new branch and worktree directory, then `cd`s into it.
 
 ```bash
-wrktr_add feature/login              # branch from origin/main (fetches first)
+wrktr_add feature/login              # branch from origin/main (fetches first; offline it uses the refs fetched earlier)
 wrktr_add fix/crash origin/v2        # branch from a specific ref
 wrktr_add experiment/auth main       # branch from local main
 ```
@@ -552,7 +552,7 @@ Creates a local worktree for a branch that already exists on the remote.
 wrktr_checkout feature/login
 ```
 
-Fetches first, verifies the remote branch exists (lists available ones if not), creates the local worktree, sets up upstream tracking, and `cd`s in. Requires a remote to be configured.
+Fetches first (if the fetch fails, for example offline, it continues with the refs fetched earlier), verifies the remote branch exists (lists available ones if not), creates the local worktree, sets up upstream tracking, and `cd`s in. Requires a remote to be configured.
 
 ---
 
@@ -792,7 +792,7 @@ This does not affect the project files or bare repository.
 
 ### Migrating old configs
 
-Configs created before this format change used shell script syntax (`export KEY=value`). These are detected automatically on load and still work — `wrktr_use` sources them as before and prints a migration notice. To migrate, run `wrktr_config_edit` and remove the `export ` prefix from each line.
+Configs created before this format change used shell script syntax (`export KEY=value`). These are detected automatically on load and still work — `wrktr_use` reads the `KEY=value` pairs (it strips the `export ` prefix and never executes the file) and prints a migration notice. To migrate, run `wrktr_config_edit` and remove the `export ` prefix from each line.
 
 ---
 

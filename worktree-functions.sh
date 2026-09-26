@@ -555,6 +555,9 @@ wrktr_adopt [path]
 
   Convert an existing normal git clone into a wrktr bare repository structure.
   The original clone is not modified — remove it manually when confirmed.
+  Every remote of the original clone is restored, not only origin. Only
+  committed state is carried over: if the clone has uncommitted changes or
+  stash entries, they are listed and you are asked before continuing.
 
   Prompts:
     Path to existing git clone     Must have a .git subdirectory
@@ -635,9 +638,10 @@ EOF
         cat <<'EOF'
 wrktr_use <session>
 
-  Load a project session config into the current shell. Sources
-  ~/.config/wrktr/<session>.env and validates the result. If validation
-  fails, all variables are unset so the shell is not left in a partial state.
+  Load a project session config into the current shell. Parses
+  ~/.config/wrktr/<session>.env (only the five session keys are read; the
+  file is never executed) and validates the result. If validation fails, the
+  previously loaded session, if any, is left active.
 
   Examples:
     wrktr_use myapp
@@ -754,6 +758,8 @@ wrktr_add <branch> [base-ref]
                 when a remote is configured, or <main-branch> without one.
 
   Fetches from the remote automatically before creating (when remote is set).
+  If the fetch fails (for example offline), it continues with the refs fetched
+  previously and fails only if the base ref is not among them.
 
   Examples:
     wrktr_add feature/login
@@ -768,7 +774,9 @@ wrktr_checkout <branch>
 
   Create a local worktree for a branch that already exists on the remote.
   Fetches first, verifies the remote branch exists, creates the worktree,
-  sets up upstream tracking, and cds in. Requires a remote to be configured.
+  sets up upstream tracking, and cds in. If the fetch fails (for example
+  offline), it continues with the refs fetched previously. Requires a remote
+  to be configured.
 
   Examples:
     wrktr_checkout feature/login
@@ -821,9 +829,10 @@ wrktr_push
   Push the current branch to the configured remote.
   Must be run from inside a worktree belonging to the loaded session.
 
-  Refuses to push the main branch. Attempts a regular push first; if rejected
-  (expected after wrktr_rebase), prompts before retrying with --force-with-lease.
-  Requires a remote to be configured.
+  Refuses to push the main branch. Pushes with -u so the branch tracks the
+  remote. If the push is rejected (expected after wrktr_rebase), prompts before
+  retrying with --force-with-lease; other failures (authentication, network)
+  are reported without a force-push offer. Requires a remote to be configured.
 
   Examples:
     wrktr_push
@@ -884,6 +893,10 @@ wrktr_git <git-args>
   Run any git command against the bare repository by supplying --git-dir
   automatically. Use from outside a worktree. From inside a worktree,
   ordinary 'git' commands work without it.
+
+  In dry-run mode, read-only commands (log, status, rev-parse, branch
+  listing, ...) still run; anything that could change the repository is only
+  printed.
 
   Examples:
     wrktr_git fetch origin
@@ -961,6 +974,10 @@ wrktr_reload
   Unload all wrktr functions and re-source worktree-functions.sh from the
   path it was originally loaded from (WRKTR_SOURCE_PATH). Use after editing
   the file to pick up changes without starting a new shell.
+
+  The loaded session, dry-run state, WRKTR_CONFIG_DIR and WRKTR_REPO_DIR_NAME
+  are kept. If the file has a syntax error the reload is refused and the
+  version already loaded stays in place.
 
   Examples:
     wrktr_reload

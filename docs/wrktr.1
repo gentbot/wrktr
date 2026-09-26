@@ -1,6 +1,6 @@
 .\" wrktr.1 — manual page for the wrktr shell worktree manager
 .\" Install: cp wrktr.1 ~/.local/share/man/man1/ && man -W ~/.local/share/man/man1
-.TH WRKTR 1 "June 2026" "wrktr 1.0.2" "User Commands"
+.TH WRKTR 1 "June 23, 2026" "wrktr 1.0.2" "User Commands"
 .
 .SH NAME
 wrktr \- branch-as-directory git worktree session manager
@@ -80,9 +80,9 @@ Required only by
 .
 .SH INSTALLATION
 .nf
-git clone https://github.com/your-username/wrktr.git
+git clone https://github.com/gentbot/wrktr.git
 cd wrktr
-./install.sh
+\&./install.sh
 .fi
 .PP
 .B install.sh
@@ -132,8 +132,11 @@ Convert an existing normal git clone to the wrktr structure.
 wrktr_adopt [path]
 .fi
 .PP
-Creates a bare clone from an existing repo.
+Creates a bare clone from an existing repo and restores every remote of the
+original clone.
 The original clone is not modified.
+Only committed state is carried over; uncommitted changes and stash entries
+are listed and confirmed before continuing.
 .
 .SS wrktr_init
 Initialize a bare repository from a new local project with no remote.
@@ -185,7 +188,7 @@ wrktr_use <name>
 Parses
 .IR ~/.config/wrktr/<name>.env ,
 exports session variables, and validates.
-On failure, all variables are unset.
+On failure, the previously loaded session, if any, stays active.
 Sessions are shell-scoped.
 .
 .SS wrktr_list
@@ -281,9 +284,12 @@ Refuses if the working tree has uncommitted changes.
 .SS wrktr_push
 Push the current branch to the configured remote.
 Refuses to push the main branch.
+Pushes with
+.BR \-u ,
+so the branch tracks the remote.
 Prompts before retrying with
 .B \-\-force\-with\-lease
-if the push is rejected.
+if the push is rejected; other failures are reported without a force offer.
 .
 .SS wrktr_remove
 Remove a worktree and optionally delete the branch ref.
@@ -309,6 +315,7 @@ Automatically supplies
 Use from outside a worktree; from inside, plain
 .BR git (1)
 works without it.
+In dry-run mode, read-only commands still run and only mutating ones are printed.
 .
 .SS wrktr
 Raw passthrough to
@@ -360,6 +367,8 @@ variables from the current shell.
 .B wrktr_reload
 Unload and re-source from the original path. Useful after editing
 .IR worktree-functions.sh .
+The loaded session, dry-run state and settings are kept, and the reload is
+refused if the file has a syntax error.
 .TP
 .B wrktr_prompt_info
 Output a context string for embedding in
@@ -510,7 +519,7 @@ in the repository root.
 wrktr contributors.
 .PP
 Source and issue tracker:
-.I https://github.com/your-username/wrktr
+.I https://github.com/gentbot/wrktr
 .
 .SH LICENSE
 MIT License. See

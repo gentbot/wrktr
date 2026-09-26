@@ -631,8 +631,14 @@ EOS
     [ -z "$missing" ] || { echo "undocumented:$missing"; return 1; }
 }
 
-@test "docs: README has no placeholder clone URL" {
-    ! grep -q 'your-username' "$BATS_TEST_DIRNAME/../README.md"
+@test "docs: no placeholder clone URL in README, reference or man page" {
+    ! grep -rq 'your-username' "$BATS_TEST_DIRNAME/../README.md" "$BATS_TEST_DIRNAME/../docs"
+}
+
+@test "docs: man page has no lint errors or warnings" {
+    command -v mandoc >/dev/null 2>&1 || skip "mandoc not available"
+    run bash -c "mandoc -Tlint \"$BATS_TEST_DIRNAME/../docs/wrktr.1\" 2>&1 | grep -v STYLE"
+    [ -z "$output" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -757,4 +763,55 @@ _make_worktree() {
     [ "$status" -eq 1 ]
     [[ "$output" =~ "Worktree remove failed" ]]
     [ -f "$TRUNK/feature%2Fr5/untracked" ]
+}
+
+# ---------------------------------------------------------------------------
+# Help, man page and reference stay in step with behavior
+# ---------------------------------------------------------------------------
+
+@test "help: wrktr_use describes parsing and session restore, not sourcing" {
+    run wrktr_help use
+    [ "$status" -eq 0 ]
+    [[ ! "$output" =~ "Sources" ]]
+    [[ "$output" =~ "previously loaded session" ]]
+}
+
+@test "help: wrktr_push mentions upstream tracking and force only after a rejection" {
+    run wrktr_help push
+    [[ "$output" =~ "-u" ]]
+    [[ "$output" =~ "rejected" ]]
+}
+
+@test "help: wrktr_adopt mentions every remote and uncommitted changes" {
+    run wrktr_help adopt
+    [[ "$output" =~ "remote" ]]
+    [[ "$output" =~ "uncommitted" ]]
+}
+
+@test "help: wrktr_reload says it keeps the session" {
+    run wrktr_help reload
+    [[ "$output" =~ "session" ]]
+    [[ "$output" =~ "syntax" ]]
+}
+
+@test "help: wrktr_git says read-only commands run in dry-run mode" {
+    run wrktr_help git
+    [[ "$output" =~ "dry-run" ]]
+}
+
+@test "help: wrktr_add and wrktr_checkout mention the offline fallback" {
+    run wrktr_help add
+    [[ "$output" =~ "fetch fails" ]]
+    run wrktr_help checkout
+    [[ "$output" =~ "fetch fails" ]]
+}
+
+@test "docs: reference no longer says wrktr_use sources configs" {
+    ! grep -q 'sources them as before' "$BATS_TEST_DIRNAME/../docs/wrktr.md"
+    ! grep -q '^Sources `~/.config/wrktr' "$BATS_TEST_DIRNAME/../docs/wrktr.md"
+    ! grep -q 'all variables are unset' "$BATS_TEST_DIRNAME/../docs/wrktr.md"
+}
+
+@test "docs: man page does not say a failed wrktr_use unsets all variables" {
+    ! grep -q 'all variables are unset' "$BATS_TEST_DIRNAME/../docs/wrktr.1"
 }

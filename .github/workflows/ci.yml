@@ -72,12 +72,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install bats-core and zsh (Ubuntu)
+      - name: Install bats-core, zsh and mandoc (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
           sudo /tmp/bats-core/install.sh /usr/local
-          sudo apt-get install -y zsh
+          sudo apt-get install -y zsh mandoc
 
       - name: Install bats-core and bash (macOS)
         if: runner.os == 'macOS'
