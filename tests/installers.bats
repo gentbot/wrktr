@@ -130,7 +130,8 @@ _install_with_profile() {
     [ -L "$TEST_HOME/.zshrc" ]
     [ "$(grep -cF "$LINE_MARKER" "$T/dotfiles/zshrc" || true)" -eq 0 ]
     grep -q '^export FOO=1$' "$T/dotfiles/zshrc"
-    [ "$(stat -f %Lp "$T/dotfiles/zshrc" 2>/dev/null || stat -c %a "$T/dotfiles/zshrc")" = "644" ]
+    # ls -l is portable; stat's flags differ between BSD/macOS and GNU/Linux.
+    [ "$(ls -l "$T/dotfiles/zshrc" | cut -c1-10)" = "-rw-r--r--" ]
 }
 
 @test "uninstall.sh: --yes succeeds when the source line is the only line" {
