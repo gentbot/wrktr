@@ -46,6 +46,11 @@ setup() {
 
     # Clear any session state left from a previous test
     unset WRKTR_NAME WRKTR_BASE_TRUNK WRKTR_BASE_DIR WRKTR_REMOTE WRKTR_MAIN_BRANCH
+
+    # Tests that make commits must not depend on the machine's git identity
+    # (CI runners and fresh containers have none).
+    export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com
+    export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
 }
 
 teardown() {
@@ -537,6 +542,46 @@ _run_init_in_pty() {
     [ ! -e "$root/.wrktr" ]
 }
 
+@test "wrktr_init: points the bare repo HEAD at the default main branch" {
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    local root="$BATS_TMPDIR/wrktr-trunk-$$-init-head/x"
+    mkdir -p "$root/main"
+    echo f > "$root/main/f"
+    run python3 "$BATS_TEST_DIRNAME/helpers/run_in_pty.py" \
+        "source \"$WRKTR_FUNCTIONS\" >/dev/null; wrktr_init >/dev/null" \
+        "$root"$'\n\n\ny\nn\nn\n'
+    [ "$status" -eq 0 ]
+    [ "$(git --git-dir="$root/.wrktr" symbolic-ref HEAD)" = "refs/heads/main" ]
+    git --git-dir="$root/.wrktr" rev-parse --verify --quiet HEAD >/dev/null
+}
+
+@test "wrktr_init: points the bare repo HEAD at a custom main branch" {
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    local root="$BATS_TMPDIR/wrktr-trunk-$$-init-head-custom/x"
+    mkdir -p "$root/main"
+    echo f > "$root/main/f"
+    run python3 "$BATS_TEST_DIRNAME/helpers/run_in_pty.py" \
+        "source \"$WRKTR_FUNCTIONS\" >/dev/null; wrktr_init >/dev/null" \
+        "$root"$'\n\ntrunk\ny\nn\nn\n'
+    [ "$status" -eq 0 ]
+    [ "$(git --git-dir="$root/.wrktr" symbolic-ref HEAD)" = "refs/heads/trunk" ]
+    git --git-dir="$root/.wrktr" rev-parse --verify --quiet HEAD >/dev/null
+}
+
+@test "wrktr_init: rejects an invalid branch name before creating anything" {
+    command -v python3 >/dev/null 2>&1 || skip "python3 not available"
+    local root="$BATS_TMPDIR/wrktr-trunk-$$-init-badbranch/x"
+    mkdir -p "$root/main"
+    echo f > "$root/main/f"
+    run python3 "$BATS_TEST_DIRNAME/helpers/run_in_pty.py" \
+        "source \"$WRKTR_FUNCTIONS\" >/dev/null; wrktr_init" \
+        "$root"$'\n\nbad..name\nn\nn\nn\n'
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Invalid branch name" ]]
+    [ ! -e "$root/.wrktr" ]
+    [ -f "$root/main/f" ]
+}
+
 # ===========================================================================
 # Sourcing under zsh
 # ===========================================================================
@@ -649,6 +694,17 @@ _make_session_config() {
         "$trunk" "$trunk" > "$WRKTR_CONFIG_DIR/testproject.env"
     run bash -c "source \"$WRKTR_FUNCTIONS\" >/dev/null; export WRKTR_CONFIG_DIR=\"$WRKTR_CONFIG_DIR\" WRKTR_REMOTE=stale; wrktr_use testproject >/dev/null 2>&1; echo \"rc=\$? remote=[\${WRKTR_REMOTE}]\""
     [[ "$output" == *"rc=0 remote=[]" ]]
+}
+
+@test "wrktr_use: a failing load keeps the previously loaded session" {
+    local trunk="$BATS_TMPDIR/wrktr-trunk-$$-use-keep"
+    mkdir -p "$trunk"
+    _make_bare_repo "$trunk"
+    # A config that exists but fails validation (its trunk directory is missing)
+    printf 'WRKTR_NAME=broken\nWRKTR_BASE_TRUNK=%s/gone\nWRKTR_BASE_DIR=%s/gone/.wrktr\nWRKTR_REMOTE=\nWRKTR_MAIN_BRANCH=main\n' \
+        "$trunk" "$trunk" > "$WRKTR_CONFIG_DIR/broken.env"
+    run bash -c "source \"$WRKTR_FUNCTIONS\" >/dev/null; export WRKTR_CONFIG_DIR=\"$WRKTR_CONFIG_DIR\"; wrktr_use broken >/dev/null 2>&1; echo \"rc=\$? name=[\$WRKTR_NAME] trunk=[\$WRKTR_BASE_TRUNK]\""
+    [[ "$output" == *"rc=1 name=[testproject] trunk=[$trunk]" ]]
 }
 
 @test "wrktr_use: ignores WRKTR_ keys that are not session settings" {

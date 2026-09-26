@@ -13,10 +13,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 ## [Unreleased]
 
 ### Added
+- Tests: the real `wrktr_remove` path and its branch-delete and force-delete prompts, driven through a pty; `wrktr_init` HEAD and branch-name cases; `wrktr_use` session restore
 - Tests: command-level suite in `tests/commands.bats` covering `wrktr_clone`, `add`, `go`, `base`, `status`, `prompt_info`, `update`, `checkout`, `remote_add`, `rebase`, `push`, `remove` (dry-run), `git`, `list`, `current`, `config_show` and dry-run toggling; version-consistency tests (script, CHANGELOG, man page)
 - Tests: `wrktr_init` dry-run and stale-temp-dir cases (run in a pty via `tests/helpers/run_in_pty.py`), and zsh source/unload/reload cases
 
 ### Changed
+- CI: `actions/checkout` bumped to v7.0.1 (pinned by SHA), which runs on Node 24; the previous pin ran on the deprecated Node 20
 - `install.sh` no longer edits your shell profile without consent: it asks first when run in a terminal, and leaves the profile untouched (printing the line to add) when it is not. New flags: `--yes` adds the line without asking, `--no-profile` never touches the profile. `update.sh` passes flags through.
 - `uninstall.sh` asks before removing the source line from each profile, and lists the profiles without changing them when not run in a terminal. `--yes` removes the line without asking.
 - Sourcing `worktree-functions.sh` is now silent; set `WRKTR_VERBOSE=1` to print the "Worktree functions loaded" banner. Sourcing also returns 0 instead of the exit status of the last command.
@@ -29,6 +31,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 - Release workflow: fails if the tag does not match `WRKTR_VERSION` and a CHANGELOG entry
 
 ### Fixed
+- `wrktr_use`: when the session being loaded fails validation, the previously loaded session is restored instead of being lost
+- `wrktr_init`: the bare repository's `HEAD` now points at the chosen main branch instead of an unborn `master`, so plain git commands in the bare repo work; an invalid branch name is now rejected before anything is created
 - `uninstall.sh`: rewrites profiles in place, so a symlinked profile stays a symlink and keeps its permissions, and no longer aborts when the source line was the only line
 - `wrktr_add`, `wrktr_checkout`: a failed fetch now falls back to the refs fetched previously instead of aborting, so they work offline when the base ref already exists locally
 - `wrktr_status`: detached worktrees are compared from their own HEAD rather than the bare repository's
