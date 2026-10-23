@@ -39,7 +39,7 @@
 #
 # =============================================================================
 
-export WRKTR_VERSION="1.0.2"
+export WRKTR_VERSION="1.1.0"
 export WRKTR_CONFIG_DIR="$HOME/.config/wrktr"
 export WRKTR_DRY_RUN=0
 export WRKTR_REPO_DIR_NAME="${WRKTR_REPO_DIR_NAME:-.wrktr}"

@@ -12,6 +12,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-09-28
+
 ### Added
 - Tests: the real `wrktr_remove` path and its branch-delete and force-delete prompts, driven through a pty; `wrktr_init` HEAD and branch-name cases; `wrktr_use` session restore
 - Tests: command-level suite in `tests/commands.bats` covering `wrktr_clone`, `add`, `go`, `base`, `status`, `prompt_info`, `update`, `checkout`, `remote_add`, `rebase`, `push`, `remove` (dry-run), `git`, `list`, `current`, `config_show` and dry-run toggling; version-consistency tests (script, CHANGELOG, man page)
